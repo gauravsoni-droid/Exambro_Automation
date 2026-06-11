@@ -1,0 +1,36 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local artifacts
+*.log
+.coverage
+htmlcov/
+all_docs
+Appflow.md
+Backend_Schema.md
+Implementation_Plan.md
+PRD.md
+TRD.md
+UI_UX_Designs.md

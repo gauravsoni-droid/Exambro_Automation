@@ -1,0 +1,87 @@
+"""Tap-2 endpoints — Post review screen."""
+
+from fastapi import APIRouter, Depends, HTTPException
+
+from app.api.deps import require_owner
+from app.db import get_db
+from app.pipeline import orchestrator
+from app.schemas import PostOut, TweakIn
+
+router = APIRouter(prefix="/posts", tags=["posts"], dependencies=[Depends(require_owner)])
+
+IN_FLIGHT = ["topic_chosen", "generating", "content_ready", "awaiting_approval"]
+
+
+@router.get("/current", response_model=PostOut | None)
+def current_post() -> PostOut | None:
+    """The single in-flight post, if any (strictly one at a time)."""
+    rows = (
+        get_db()
+        .table("posts")
+        .select("*")
+        .in_("status", IN_FLIGHT)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return PostOut(**rows[0]) if rows else None
+
+
+@router.get("/{post_id}", response_model=PostOut)
+def get_post(post_id: str) -> PostOut:
+    rows = get_db().table("posts").select("*").eq("id", post_id).execute().data
+    if not rows:
+        raise HTTPException(404, "Post not found")
+    return PostOut(**rows[0])
+
+
+@router.post("/{post_id}/approve", response_model=PostOut)
+def approve(post_id: str) -> PostOut:
+    try:
+        return PostOut(**orchestrator.approve_post(post_id))
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post("/{post_id}/tweak")
+def tweak(post_id: str, body: TweakIn) -> dict:
+    try:
+        orchestrator.tweak_post(post_id, body.instruction)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {"status": "generating"}
+
+
+@router.post("/{post_id}/reject", response_model=PostOut)
+def reject(post_id: str) -> PostOut:
+    try:
+        return PostOut(**orchestrator.reject_post(post_id))
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post("/{post_id}/retry")
+def retry(post_id: str) -> dict:
+    """Re-run generation after a crash left the post in topic_chosen."""
+    rows = get_db().table("posts").select("status").eq("id", post_id).execute().data
+    if not rows:
+        raise HTTPException(404, "Post not found")
+    if rows[0]["status"] != "topic_chosen":
+        raise HTTPException(409, f"Post is '{rows[0]['status']}' — retry only from topic_chosen")
+    orchestrator.spawn_generation(post_id)
+    return {"status": "generating"}
+
+
+@router.get("/{post_id}/versions")
+def versions(post_id: str) -> list[dict]:
+    """Refine-loop audit trail (post_versions)."""
+    return (
+        get_db()
+        .table("post_versions")
+        .select("*")
+        .eq("post_id", post_id)
+        .order("version_no")
+        .execute()
+        .data
+    )
