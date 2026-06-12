@@ -73,6 +73,22 @@ def retry(post_id: str) -> dict:
     return {"status": "generating"}
 
 
+@router.post("/{post_id}/regenerate-images")
+def regenerate_images(post_id: str) -> dict:
+    """Image-only regenerate — keeps the caption, makes fresh images in the background."""
+    rows = get_db().table("posts").select("status,format").eq("id", post_id).execute().data
+    if not rows:
+        raise HTTPException(404, "Post not found")
+    if rows[0]["status"] != "awaiting_approval":
+        raise HTTPException(
+            409, f"Post is '{rows[0]['status']}' — regenerate only when awaiting approval"
+        )
+    if rows[0].get("format") != "post":
+        raise HTTPException(409, "Only image posts have images to regenerate")
+    orchestrator.spawn_image_regen(post_id)
+    return {"status": "generating"}
+
+
 @router.get("/{post_id}/versions")
 def versions(post_id: str) -> list[dict]:
     """Refine-loop audit trail (post_versions)."""

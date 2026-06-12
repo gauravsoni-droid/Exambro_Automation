@@ -25,8 +25,9 @@ _PLAN_SYSTEM = (
     "(a heading, a number, a keyword). Never Hindi/Devanagari text in images.\n"
     "- Style: clean, modern, high-contrast education graphics; vibrant but not "
     "cluttered; consistent brand feel; portrait 4:5-friendly composition.\n"
-    "- Decide single image vs carousel: carousel (2–6 prompts, one per slide) only "
-    "when the caption is a multi-point list or step-by-step; otherwise ONE prompt.\n"
+    "- Prefer ONE strong image (quality over quantity). Use a 2-slide carousel "
+    "(exactly 2 prompts) ONLY when the caption is clearly a multi-point list or "
+    "step-by-step. NEVER produce more than 2 images.\n"
     "- Each prompt must be self-contained and explicit about layout, colors, and the "
     "exact English text to render (quote it)."
 )

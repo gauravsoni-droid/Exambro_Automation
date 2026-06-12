@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import calibration, ideas, posts, queue, topics, trigger
 from app.api import settings as settings_api
 from app.config import get_settings
+from app.pipeline import orchestrator
 from app.services import scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    orchestrator.capture_event_loop()
     s = get_settings()
     s.validate_critic_family()  # critic ≠ writer — fail fast at boot
     if s.enable_apscheduler:

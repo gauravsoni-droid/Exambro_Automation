@@ -353,16 +353,90 @@ async def run_generation(post_id: str, tweak_instruction: str | None = None) -> 
         raise
 
 
-def spawn_generation(post_id: str, tweak_instruction: str | None = None) -> None:
-    """Fire-and-forget — the pipeline takes minutes; callers return immediately."""
+async def regenerate_images(post_id: str) -> None:
+    """Image-only regenerate (Tap-2 'Regenerate image' button).
+
+    Keeps the approved caption/hashtags/script — re-runs ONLY the image plan +
+    generation. Flips to `generating` so the review screen polls, then restores
+    `awaiting_approval` with fresh images (or restores it on failure).
+    """
+    db = get_db()
+    post = db.table("posts").select("*").eq("id", post_id).single().execute().data
+    if post["status"] != PostStatus.awaiting_approval.value:
+        raise ValueError(f"Post is '{post['status']}', expected 'awaiting_approval'")
+    if post.get("format") != PostFormat.post.value:
+        raise ValueError("Only image posts can regenerate images")
+    topic = db.table("topics").select("*").eq("id", post["topic_id"]).single().execute().data
+
+    db.table("posts").update(
+        {"status": PostStatus.generating.value, "image_paths": [], "updated_at": "now()"}
+    ).eq("id", post_id).execute()
+    try:
+        draft = Draft(
+            caption=post.get("caption") or "",
+            hashtags=post.get("hashtags") or [],
+            script=post.get("script"),
+        )
+        plan = await image_maker.plan_images(topic, draft)
+        image_paths = await image_maker.generate_and_store(post_id, plan)
+        db.table("posts").update(
+            {
+                "image_paths": image_paths,
+                "is_carousel": plan.is_carousel,
+                "status": PostStatus.awaiting_approval.value,
+                "updated_at": "now()",
+            }
+        ).eq("id", post_id).execute()
+    except Exception:
+        logger.exception("Image regeneration failed for post %s", post_id)
+        db.table("posts").update(
+            {"status": PostStatus.awaiting_approval.value, "updated_at": "now()"}
+        ).eq("id", post_id).execute()
+        raise
+
+
+_main_loop: asyncio.AbstractEventLoop | None = None
+_bg_tasks: set[asyncio.Task] = set()
+
+
+def capture_event_loop() -> None:
+    """Called from lifespan startup so threadpool endpoints can schedule work."""
+    global _main_loop
+    _main_loop = asyncio.get_running_loop()
+
+
+def _spawn(make_coro) -> None:
+    """Fire-and-forget a coroutine — the pipeline takes minutes; callers return now.
+
+    Sync endpoints run in Starlette's threadpool where there is no running
+    loop, so the coroutine is handed to the main loop captured at startup.
+    """
 
     async def _run() -> None:
         try:
-            await run_generation(post_id, tweak_instruction)
+            await make_coro()
         except Exception:
-            logger.exception("Background generation crashed for post %s", post_id)
+            logger.exception("Background task crashed")
 
-    asyncio.create_task(_run())
+    try:
+        task = asyncio.get_running_loop().create_task(_run())
+        _bg_tasks.add(task)  # keep a ref — bare tasks can be GC'd mid-flight
+        task.add_done_callback(_bg_tasks.discard)
+    except RuntimeError:
+        if _main_loop is None:
+            raise RuntimeError(
+                "spawn called from a thread before the event loop was captured "
+                "(capture_event_loop runs at app startup)"
+            ) from None
+        asyncio.run_coroutine_threadsafe(_run(), _main_loop)
+
+
+def spawn_generation(post_id: str, tweak_instruction: str | None = None) -> None:
+    _spawn(lambda: run_generation(post_id, tweak_instruction))
+
+
+def spawn_image_regen(post_id: str) -> None:
+    _spawn(lambda: regenerate_images(post_id))
 
 
 # ── Tap 2 ────────────────────────────────────────────────────────────────────
