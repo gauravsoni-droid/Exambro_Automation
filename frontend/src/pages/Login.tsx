@@ -19,7 +19,7 @@ export default function Login() {
   return (
     <div className="center">
       <form className="login-box" onSubmit={submit}>
-        <h1>ExamBro</h1>
+        <img src="/logo.svg" alt="ExamBro" style={{ height: 40, marginBottom: '0.75rem' }} />
         <p className="muted">Owner dashboard</p>
         <label>Email</label>
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />

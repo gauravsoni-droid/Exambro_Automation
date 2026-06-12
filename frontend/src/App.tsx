@@ -14,7 +14,9 @@ function Shell() {
   return (
     <div className="shell">
       <header className="topbar">
-        <span className="brand">ExamBro</span>
+        <span className="brand">
+          <img src="/logo.svg" alt="ExamBro" />
+        </span>
         <nav>
           <NavLink to="/today">Today</NavLink>
           <NavLink to="/review">Review</NavLink>
