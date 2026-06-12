@@ -45,50 +45,174 @@ export default function IdeaBox() {
       setError(err instanceof ApiError ? err.message : 'Discard failed')
     }
   }
+const pending = ideas.filter((i) => i.status === 'pending').length
+const used = ideas.filter((i) => i.status === 'used').length
+const discarded = ideas.filter((i) => i.status === 'discarded').length
 
-  return (
-    <div>
+return (
+  <div>
+    <div className="card">
       <h1>Idea box</h1>
+
       <p className="muted">
         A pending idea takes slot 1 in the next topic round — AI shapes it, you still approve.
       </p>
-      <form className="card" onSubmit={add}>
-        <label>Type</label>
-        <select value={type} onChange={(e) => setType(e.target.value as IdeaType)}>
-          <option value="text">Text</option>
-          <option value="link">Link</option>
-          <option value="image">Image (paste URL)</option>
-        </select>
-        <label>{type === 'text' ? 'Your idea' : 'URL'}</label>
-        <textarea
-          value={payload}
-          onChange={(e) => setPayload(e.target.value)}
-          placeholder={type === 'text' ? 'Post idea…' : 'https://…'}
-        />
-        {error && <p className="error">{error}</p>}
-        <p>
-          <button type="submit" disabled={busy || !payload.trim()}>
-            Drop idea
-          </button>
-        </p>
-      </form>
 
-      {ideas.map((i) => (
-        <div key={i.id} className="card spread">
-          <div>
-            <span className="pill">{i.type}</span>
-            <span className={`pill ${i.status === 'used' ? 'good' : i.status === 'discarded' ? 'bad' : ''}`}>
-              {i.status}
-            </span>
-            <p className="caption">{i.payload}</p>
-          </div>
-          {i.status === 'pending' && (
-            <button className="ghost" onClick={() => discard(i.id)}>
-              Discard
-            </button>
-          )}
+      <div className="statgrid" style={{ marginTop: '1rem' }}>
+        <div className="stat">
+          <div className="num">{pending}</div>
+          <div className="muted">pending</div>
         </div>
-      ))}
+
+        <div className="stat">
+          <div className="num">{used}</div>
+          <div className="muted">used</div>
+        </div>
+
+        <div className="stat">
+          <div className="num">{discarded}</div>
+          <div className="muted">discarded</div>
+        </div>
+      </div>
     </div>
-  )
+
+    <form
+      className="card"
+      onSubmit={add}
+      style={{
+        padding: '1.5rem',
+      }}
+    >
+      <h2 style={{ marginTop: 0 }}>
+        Drop a new idea
+      </h2>
+
+      <label>Type</label>
+
+  <select
+  value={type}
+  onChange={(e) => setType(e.target.value as IdeaType)}
+>
+  <option value="text">📝 Text</option>
+  <option value="link">🔗 Link</option>
+  <option value="image">🖼️ Image (paste URL)</option>
+</select>
+
+      <label>
+        {type === 'text'
+          ? 'Your idea'
+          : 'URL'}
+      </label>
+
+      <textarea
+        value={payload}
+        onChange={(e) =>
+          setPayload(e.target.value)
+        }
+        placeholder={
+          type === 'text'
+            ? 'Post idea…'
+            : 'https://…'
+        }
+        style={{
+          minHeight: '140px',
+        }}
+      />
+
+      {error && (
+        <p className="error">
+          {error}
+        </p>
+      )}
+
+      <div
+        style={{
+          marginTop: '1rem',
+        }}
+      >
+        <button
+          type="submit"
+          disabled={
+            busy || !payload.trim()
+          }
+        >
+          Drop idea
+        </button>
+      </div>
+    </form>
+
+    {ideas.length === 0 ? (
+      <div
+        className="card"
+        style={{
+          textAlign: 'center',
+          padding: '2rem',
+        }}
+      >
+        <p className="muted">
+          No ideas yet.
+        </p>
+      </div>
+    ) : (
+      <>
+        {ideas.map((i) => (
+          <div
+            key={i.id}
+            className="card"
+            style={{
+              marginBottom: '12px',
+            }}
+          >
+            <div
+              className="row"
+              style={{
+                marginBottom: '12px',
+              }}
+            >
+              <span className="pill">
+                {i.type}
+              </span>
+
+              <span
+                className={`pill ${
+                  i.status === 'used'
+                    ? 'good'
+                    : i.status ===
+                      'discarded'
+                    ? 'bad'
+                    : ''
+                }`}
+              >
+                {i.status}
+              </span>
+            </div>
+
+            <p
+              className="caption"
+              style={{
+                marginBottom: '1rem',
+              }}
+            >
+              {i.payload}
+            </p>
+
+            {i.status ===
+              'pending' && (
+              <button
+                className="ghost"
+                onClick={() =>
+                  discard(i.id)
+                }
+              >
+                Discard
+              </button>
+            )}
+          </div>
+        ))}
+      </>
+    )}
+  </div>
+)
+
+
 }
