@@ -117,7 +117,7 @@ class Critique(BaseModel):
 class ImagePlan(BaseModel):
     """Image Maker decision — single image or carousel, with English-only text."""
 
-    prompts: list[str] = Field(min_length=1, max_length=10)
+    prompts: list[str] = Field(min_length=1, max_length=2)  # quality over quantity — ≤2 images
     is_carousel: bool = False
 
 

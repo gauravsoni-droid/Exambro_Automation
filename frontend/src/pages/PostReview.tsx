@@ -55,6 +55,22 @@ export default function PostReview() {
     }
   }
 
+  // Image-only regenerate — keeps the caption, makes fresh images. Backend flips
+  // the post to `generating`, so the poll loop picks up the new images.
+  async function regenerateImages() {
+    if (!post || busy) return
+    setBusy(true)
+    setError('')
+    try {
+      await api.post(`/posts/${post.id}/regenerate-images`)
+      await load()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Image regenerate failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function sendTweak() {
     if (!post || busy || !tweak.trim()) return
     setBusy(true)
@@ -80,6 +96,12 @@ export default function PostReview() {
     )
 
   const generating = GENERATING.has(post.status)
+  const isReel = post.format === 'reel'
+  // First generation = writer/critic still running, no caption yet. An image-only
+  // regenerate also flips to `generating`, but the caption is already there.
+  const firstGen = generating && !post.caption
+  const regeneratingImages = generating && !!post.caption
+  const hashtags = post.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' ')
 
   return (
     <div>
@@ -95,7 +117,7 @@ export default function PostReview() {
       </div>
       {error && <p className="error">{error}</p>}
 
-      {generating && (
+      {firstGen ? (
         <div className="card">
           <p className="muted">
             Writing in progress (writer ⇄ critic{post.format === 'post' ? ' + images' : ''})… this
@@ -107,28 +129,42 @@ export default function PostReview() {
             </button>
           )}
         </div>
-      )}
-
-      {post.image_paths.length > 0 && (
-        <div className="imgs">
-          {post.image_paths.map((p) => (
-            <img key={p} src={mediaUrl(p)} alt="generated" />
-          ))}
-        </div>
-      )}
-
-      {post.caption && (
-        <div className="card">
-          <h2>Caption</h2>
-          <p className="caption">{post.caption}</p>
-          <p className="hashtags">{post.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' ')}</p>
-        </div>
-      )}
-
-      {post.script && (
-        <div className="card">
+      ) : isReel ? (
+        <section className="panel">
           <h2>Reel script (1 min — for manual shoot)</h2>
           <p className="caption">{post.script}</p>
+        </section>
+      ) : (
+        <div className="review-grid">
+          {/* Image section — fixed size, regenerate images only */}
+          <section className="panel image-panel">
+            <div className="panel-head">
+              <h2>Image</h2>
+              {post.status === 'awaiting_approval' && (
+                <button className="ghost small" onClick={regenerateImages} disabled={busy}>
+                  ↻ Regenerate image
+                </button>
+              )}
+            </div>
+            <div className="img-stage">
+              {regeneratingImages ? (
+                <p className="muted">Regenerating image… this updates automatically.</p>
+              ) : post.image_paths.length > 0 ? (
+                post.image_paths.map((p) => <img key={p} src={mediaUrl(p)} alt="generated" />)
+              ) : (
+                <p className="muted">No image yet.</p>
+              )}
+            </div>
+          </section>
+
+          {/* Caption section — fixed size */}
+          <section className="panel caption-panel">
+            <h2>Caption</h2>
+            <div className="panel-body">
+              <p className="caption">{post.caption}</p>
+              {hashtags && <p className="hashtags">{hashtags}</p>}
+            </div>
+          </section>
         </div>
       )}
 

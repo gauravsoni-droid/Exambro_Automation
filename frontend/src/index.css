@@ -144,6 +144,55 @@ label { display: block; margin: 0.75rem 0 0.25rem; color: var(--muted); font-siz
 .imgs { display: flex; gap: 0.75rem; flex-wrap: wrap; margin: 0.75rem 0; }
 .imgs img { width: 220px; border-radius: var(--r-md); border: 1px solid var(--border); }
 
+/* Post review — two presized sections (image + caption) */
+.review-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 0.9rem;
+  align-items: stretch;
+  margin-bottom: 0.9rem;
+}
+@media (max-width: 720px) { .review-grid { grid-template-columns: 1fr; } }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 1rem 1.25rem;
+  box-shadow: var(--shadow-sm);
+  min-height: 480px;
+  display: flex;
+  flex-direction: column;
+}
+.panel h2 { margin: 0 0 0.75rem; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.panel-head h2 { margin: 0; }
+.panel-body { overflow-y: auto; }
+
+button.small { font-size: 0.8rem; padding: 0.35rem 0.7rem; }
+
+/* Image stage — fixed area, image fills the section consistently */
+.img-stage {
+  flex: 1;
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-sm);
+  padding: 0.75rem;
+}
+.img-stage img {
+  max-width: 100%;
+  max-height: 420px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+}
+
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
 th { color: var(--muted); font-weight: 600; }
