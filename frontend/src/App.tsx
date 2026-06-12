@@ -11,12 +11,20 @@ import Settings from './pages/Settings'
 import Calibration from './pages/Calibration'
 
 function Shell() {
+  const [showLogoutModal, setShowLogoutModal] = useState(false)
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    setShowLogoutModal(false)
+  }
+
   return (
     <div className="shell">
       <header className="topbar">
         <span className="brand">
           <img src="/logo.svg" alt="ExamBro" />
         </span>
+
         <nav>
           <NavLink to="/today">Today</NavLink>
           <NavLink to="/review">Review</NavLink>
@@ -25,13 +33,45 @@ function Shell() {
           <NavLink to="/settings">Settings</NavLink>
           <NavLink to="/calibration">Calibration</NavLink>
         </nav>
-        <button className="ghost" onClick={() => supabase.auth.signOut()}>
+
+        <button
+          className="ghost"
+          onClick={() => setShowLogoutModal(true)}
+        >
           Sign out
         </button>
       </header>
+
       <main>
         <Outlet />
       </main>
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h3>Sign Out</h3>
+
+            <p>Are you sure you want to sign out?</p>
+
+            <div className="modal-actions">
+              <button
+                className="ghost"
+                onClick={() => setShowLogoutModal(false)}
+              >
+                Cancel
+              </button>
+
+              <button
+                className="danger"
+                onClick={handleSignOut}
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
