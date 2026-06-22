@@ -55,10 +55,15 @@ async def decide_topics(
 
     idea_block = ""
     if pending_idea:
+        pillar_hint = (
+            f" Preferred pillar: {pending_idea['pillar_name']}."
+            if pending_idea.get("pillar_name")
+            else " Tag it with whichever allowed pillar fits best."
+        )
         idea_block = (
             f"\nOWNER IDEA (type={pending_idea['type']}): {pending_idea['payload']}\n"
-            "Shape this idea into a proper topic and put it in SLOT 1. It wins regardless "
-            "of pillar rotation — tag it with whichever allowed pillar fits best."
+            f"Shape this idea into a proper topic and put it in SLOT 1. It wins regardless "
+            f"of pillar rotation —{pillar_hint}"
         )
 
     rejected_block = ""

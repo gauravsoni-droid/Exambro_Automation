@@ -13,7 +13,12 @@ from app.schemas import Draft, PostFormat
 CTA_DEFAULT = "Download ExamBro app — link in bio."
 
 
-def _system_prompt(language: str, format_: PostFormat, settings_row: dict[str, Any]) -> str:
+def _system_prompt(
+    language: str,
+    format_: PostFormat,
+    settings_row: dict[str, Any],
+    pillar: dict[str, Any] | None = None,
+) -> str:
     lang_name = context.LANGUAGE_NAMES.get(language, language)
     allowlist = settings_row.get("english_allowlist") or []
     script_part = ""
@@ -23,11 +28,21 @@ def _system_prompt(language: str, format_: PostFormat, settings_row: dict[str, A
             f"in {lang_name}, spoken naturally to camera by a real person (not the owner). "
             "Structure: hook (first 3 seconds) → value → CTA. Mark pauses/emphasis sparingly."
         )
+    pillar_block = ""
+    if pillar:
+        pillar_block = (
+            f"CONTENT PILLAR: {pillar['name']}"
+            + (f" — {pillar['description']}" if pillar.get("description") else "")
+            + "\nWrite content that fits this pillar's theme.\n\n"
+        )
     return (
         f"You are ExamBro's Instagram content writer. Write in {lang_name}.\n\n"
         f"{context.language_rule(language, allowlist)}\n\n"
         f"{context.brand_voice_block()}\n\n"
+        f"{context.business_foundation_block(settings_row)}\n\n"
         f"{context.target_audience_block(settings_row)}\n\n"
+        f"{context.never_post_block(settings_row)}\n\n"
+        f"{pillar_block}"
         f"{context.few_shot_block()}\n\n"
         "OUTPUT:\n"
         "- caption: scroll-stopping hook in the first line, clear value, short paragraphs, "
@@ -63,10 +78,12 @@ async def write_draft(
     else:
         user += "\n\nWrite the draft."
 
+    active_pillars = context.load_active_pillars()
+    pillar = next((p for p in active_pillars if p["id"] == topic.get("pillar_id")), None)
     return await llm.complete_json(
         s.writer_provider,
         s.writer_model,
-        _system_prompt(language, format_, settings_row),
+        _system_prompt(language, format_, settings_row, pillar),
         user,
         Draft,
     )

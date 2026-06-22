@@ -48,6 +48,7 @@ export interface Idea {
   type: IdeaType
   payload: string
   image_path: string | null
+  pillar_name: string | null
   status: IdeaStatus
   used_at: string | null
   created_at: string | null

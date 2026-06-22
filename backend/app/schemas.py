@@ -168,6 +168,7 @@ class IdeaIn(BaseModel):
     type: IdeaType
     payload: str
     image_path: str | None = None
+    pillar_name: str | None = None
 
 
 class IdeaOut(IdeaIn):

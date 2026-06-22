@@ -58,7 +58,7 @@ export default function IdeaBox() {
     setBusy(true)
     setError('')
     try {
-      await api.post('/ideas', { type, payload: payload.trim() })
+      await api.post('/ideas', { type, payload: payload.trim(), pillar_name: selectedPillar ?? null })
       setPayload('')
       setSelectedPillar(null)
       await load()

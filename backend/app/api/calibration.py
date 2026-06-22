@@ -115,6 +115,42 @@ async def rerun_critic() -> CalibrationSummary:
     return summary()
 
 
+@router.post("/promote")
+def promote() -> dict:
+    """Promote agreed calibration items into golden_examples for Writer/Critic few-shot."""
+    db = get_db()
+
+    candidates = (
+        db.table("calibration_items")
+        .select("content,owner_verdict")
+        .eq("agreed", True)
+        .execute()
+        .data
+    )
+
+    existing_captions = {
+        r["caption"]
+        for r in db.table("golden_examples").select("caption").execute().data
+    }
+
+    to_insert = []
+    skipped = 0
+    for item in candidates:
+        if item["content"] in existing_captions:
+            skipped += 1
+            continue
+        to_insert.append({
+            "caption": item["content"],
+            "label": "good" if item["owner_verdict"] == "good" else "bad",
+            "notes": "Promoted from calibration",
+        })
+
+    if to_insert:
+        db.table("golden_examples").insert(to_insert).execute()
+
+    return {"promoted_count": len(to_insert), "skipped_count": skipped}
+
+
 @router.get("/summary", response_model=CalibrationSummary)
 def summary() -> CalibrationSummary:
     rows = get_db().table("calibration_items").select("agreed").execute().data
