@@ -18,7 +18,7 @@ def current_post() -> PostOut | None:
     rows = (
         get_db()
         .table("posts")
-        .select("*")
+        .select("*, topics(title, round_date, pillar_id, pillars(name))")
         .in_("status", IN_FLIGHT)
         .order("created_at", desc=True)
         .limit(1)
@@ -30,7 +30,14 @@ def current_post() -> PostOut | None:
 
 @router.get("/{post_id}", response_model=PostOut)
 def get_post(post_id: str) -> PostOut:
-    rows = get_db().table("posts").select("*").eq("id", post_id).execute().data
+    rows = (
+        get_db()
+        .table("posts")
+        .select("*, topics(title, round_date, pillar_id, pillars(name))")
+        .eq("id", post_id)
+        .execute()
+        .data
+    )
     if not rows:
         raise HTTPException(404, "Post not found")
     return PostOut(**rows[0])
