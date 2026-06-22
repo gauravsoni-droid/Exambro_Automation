@@ -1,3 +1,5 @@
+'use client'
+
 // Phase-0 throwaway screen — Critic Accuracy Test (Appflow §5).
 // Blind protocol: owner verdict saved FIRST; critic verdict revealed only after save.
 // Retires after the ≥80% gate passes.
@@ -5,6 +7,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import type { CalibrationItem, CalibrationSummary, Verdict } from '../types'
+import Button from '../components/Button'
+import Card from '../components/Card'
+import Badge from '../components/Badge'
+import { Textarea } from '../components/Input'
 
 export default function Calibration() {
   const [item, setItem] = useState<CalibrationItem | null>(null)
@@ -65,83 +71,83 @@ export default function Calibration() {
     <div>
       <h1>Critic Accuracy Test (Phase 0)</h1>
       {summary && (
-        <div className="statgrid">
-          <div className="stat">
-            <div className="num">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-[0.9rem] mb-4">
+          <div className="bg-white border border-border rounded-2xl p-4 shadow-sm">
+            <div className="text-[1.8rem] font-bold text-accent-700 mb-1">
               {summary.labeled}/{summary.total}
             </div>
-            <div className="muted">labeled</div>
+            <div className="text-muted text-[0.88rem]">labeled</div>
           </div>
-          <div className="stat">
-            <div className="num">{summary.agreed}</div>
-            <div className="muted">agreements</div>
+          <div className="bg-white border border-border rounded-2xl p-4 shadow-sm">
+            <div className="text-[1.8rem] font-bold text-accent-700 mb-1">{summary.agreed}</div>
+            <div className="text-muted text-[0.88rem]">agreements</div>
           </div>
-          <div className="stat">
-            <div className="num">{summary.pass_gate ? 'PASS' : '—'}</div>
-            <div className="muted">gate: ≥40/50 (80%)</div>
+          <div className="bg-white border border-border rounded-2xl p-4 shadow-sm">
+            <div className="text-[1.8rem] font-bold text-accent-700 mb-1">{summary.pass_gate ? 'PASS' : '—'}</div>
+            <div className="text-muted text-[0.88rem]">gate: ≥40/50 (80%)</div>
           </div>
         </div>
       )}
-      {error && <p className="error">{error}</p>}
+      {error && <p className="text-bad my-2">{error}</p>}
 
       {revealed ? (
-        <div className="card">
+        <Card>
           <h2>Result</h2>
           <p>
-            Your verdict: <span className="pill">{revealed.owner_verdict}</span>
-            Critic verdict: <span className="pill">{revealed.critic_verdict}</span>
+            Your verdict: <Badge>{revealed.owner_verdict}</Badge>
+            Critic verdict: <Badge>{revealed.critic_verdict}</Badge>
             {revealed.critic_score != null && (
-              <span className="pill">score {revealed.critic_score}/10</span>
+              <Badge>score {revealed.critic_score}/10</Badge>
             )}
           </p>
           <p>
             {revealed.agreed ? (
-              <span className="pill good">agreed</span>
+              <Badge variant="good">agreed</Badge>
             ) : (
-              <span className="pill bad">disagreed</span>
+              <Badge variant="bad">disagreed</Badge>
             )}
           </p>
-          <button onClick={load}>Next post →</button>
-        </div>
+          <Button onClick={load}>Next post →</Button>
+        </Card>
       ) : item ? (
-        <div className="card">
+        <Card>
           <h2>Rate this post — good, or needs work?</h2>
-          <p className="caption">{item.content}</p>
-          <p className="muted">
+          <p className="whitespace-pre-wrap leading-[1.6] text-text-2">{item.content}</p>
+          <p className="text-muted text-[0.88rem]">
             Judge blind: the AI's verdict is revealed only after you save yours.
           </p>
-          <div className="row">
-            <button className="success" onClick={() => label('good')} disabled={busy}>
+          <div className="flex gap-3 items-center flex-wrap">
+            <Button variant="success" onClick={() => label('good')} disabled={busy}>
               Good
-            </button>
-            <button className="danger" onClick={() => label('needs_work')} disabled={busy}>
+            </Button>
+            <Button variant="danger" onClick={() => label('needs_work')} disabled={busy}>
               Needs work
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       ) : (
-        <p className="muted">No posts waiting for a verdict. Add sample posts below.</p>
+        <p className="text-muted text-[0.88rem]">No posts waiting for a verdict. Add sample posts below.</p>
       )}
 
-      <div className="card">
+      <Card>
         <h2>Add a sample post</h2>
-        <p className="muted">
+        <p className="text-muted text-[0.88rem]">
           Paste one post caption at a time (text only — the critic judges writing, not
           images). Target: 50 total, a mix of good and weak (real past posts + AI drafts).
         </p>
-        <textarea
-          style={{ minHeight: 160 }}
+        <Textarea
+          className="min-h-[160px]"
           value={seedText}
           onChange={(e) => setSeedText(e.target.value)}
           placeholder="Post का caption यहाँ paste करें…"
         />
-        <p className="row">
-          <button onClick={addPost} disabled={busy || !seedText.trim()}>
+        <p className="flex gap-3 items-center flex-wrap">
+          <Button onClick={addPost} disabled={busy || !seedText.trim()}>
             {busy ? 'Adding…' : 'Add post'}
-          </button>
-          <span className="muted">{summary?.total ?? 0} of 50 in the test set</span>
+          </Button>
+          <span className="text-muted text-[0.88rem]">{summary?.total ?? 0} of 50 in the test set</span>
         </p>
-      </div>
+      </Card>
     </div>
   )
 }

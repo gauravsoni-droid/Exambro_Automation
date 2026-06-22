@@ -32,7 +32,8 @@ app = FastAPI(title="ExamBro IG Automation", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[get_settings().dashboard_base_url, "http://localhost:5173"],
+    allow_origins=[get_settings().dashboard_base_url],
+    allow_origin_regex=r"http://localhost:\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

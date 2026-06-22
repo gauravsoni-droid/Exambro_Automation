@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 
-const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000'
 
 export class ApiError extends Error {
   status: number

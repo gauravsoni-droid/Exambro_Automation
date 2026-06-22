@@ -1,0 +1,8 @@
+{
+  "/page": "app/page.js",
+  "/today/page": "app/today/page.js",
+  "/ideas/page": "app/ideas/page.js",
+  "/queue/page": "app/queue/page.js",
+  "/insights/page": "app/insights/page.js",
+  "/settings/page": "app/settings/page.js"
+}
