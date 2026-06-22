@@ -41,6 +41,12 @@ export interface Post {
   critic_score: number | null
   status: PostStatus
   created_at: string | null
+  topics?: {
+    title: string | null
+    round_date?: string
+    pillar_id?: string | null
+    pillars: { name: string } | null
+  } | null
 }
 
 export interface Idea {

@@ -149,6 +149,19 @@ class TopicOut(BaseModel):
     status: TopicStatus
 
 
+class PillarRef(BaseModel):
+    name: str | None = None
+
+
+class PostTopicRef(BaseModel):
+    """Topic + pillar context joined onto a post (mirrors queue's join)."""
+
+    title: str | None = None
+    round_date: date | None = None
+    pillar_id: str | None = None
+    pillars: PillarRef | None = None
+
+
 class PostOut(BaseModel):
     id: str
     topic_id: str
@@ -162,6 +175,7 @@ class PostOut(BaseModel):
     critic_score: float | None = None
     status: PostStatus
     created_at: datetime | None = None
+    topics: PostTopicRef | None = None
 
 
 class IdeaIn(BaseModel):
