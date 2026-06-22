@@ -1,8 +1,12 @@
 {
-  "/page": "app/page.js",
-  "/today/page": "app/today/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/calibration/page": "app/calibration/page.js",
   "/ideas/page": "app/ideas/page.js",
+  "/page": "app/page.js",
   "/queue/page": "app/queue/page.js",
+  "/review/[postId]/page": "app/review/[postId]/page.js",
   "/insights/page": "app/insights/page.js",
+  "/review/page": "app/review/page.js",
+  "/today/page": "app/today/page.js",
   "/settings/page": "app/settings/page.js"
 }

@@ -1,0 +1,12 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/calibration/page": "/calibration",
+  "/ideas/page": "/ideas",
+  "/page": "/",
+  "/queue/page": "/queue",
+  "/review/[postId]/page": "/review/[postId]",
+  "/insights/page": "/insights",
+  "/review/page": "/review",
+  "/today/page": "/today",
+  "/settings/page": "/settings"
+}
