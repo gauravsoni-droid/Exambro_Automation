@@ -1,16 +1,7 @@
-<<<<<<< HEAD
-{}
-=======
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/calibration/page": "app/calibration/page.js",
-  "/ideas/page": "app/ideas/page.js",
-  "/page": "app/page.js",
-  "/queue/page": "app/queue/page.js",
-  "/review/[postId]/page": "app/review/[postId]/page.js",
-  "/insights/page": "app/insights/page.js",
-  "/review/page": "app/review/page.js",
   "/today/page": "app/today/page.js",
-  "/settings/page": "app/settings/page.js"
+  "/settings/page": "app/settings/page.js",
+  "/insights/page": "app/insights/page.js",
+  "/ideas/page": "app/ideas/page.js",
+  "/queue/page": "app/queue/page.js"
 }
->>>>>>> cbdb06d5a7b5dc125df9496d984c9223e2485cee

@@ -1,14 +1,5 @@
 {
-  "/Calibration": "pages/Calibration.html",
-  "/IdeaBox": "pages/IdeaBox.html",
-  "/Insights": "pages/Insights.html",
-  "/Login": "pages/Login.html",
-  "/PostReview": "pages/PostReview.html",
-  "/Queue": "pages/Queue.html",
-  "/Settings": "pages/Settings.html",
-  "/Today": "pages/Today.html",
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
-  "/_document": "pages/_document.js",
-  "/404": "pages/404.html"
+  "/_document": "pages/_document.js"
 }

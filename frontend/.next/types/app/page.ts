@@ -1,4 +1,4 @@
-// File: C:\Users\Cloudus6\Desktop\Exambro_AI_Content\frontend\src\app\page.tsx
+// File: C:\Users\HP\Desktop\exambr\Exambro_Automation\frontend\src\app\page.tsx
 import * as entry from '../../../src/app/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

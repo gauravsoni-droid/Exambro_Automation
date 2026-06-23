@@ -55,15 +55,10 @@ async def decide_topics(
 
     idea_block = ""
     if pending_idea:
-        pillar_hint = (
-            f" Preferred pillar: {pending_idea['pillar_name']}."
-            if pending_idea.get("pillar_name")
-            else " Tag it with whichever allowed pillar fits best."
-        )
         idea_block = (
             f"\nOWNER IDEA (type={pending_idea['type']}): {pending_idea['payload']}\n"
-            f"Shape this idea into a proper topic and put it in SLOT 1. It wins regardless "
-            f"of pillar rotation —{pillar_hint}"
+            "Shape this idea into a proper topic and put it in SLOT 1. It wins regardless "
+            "of pillar rotation — tag it with whichever allowed pillar fits best."
         )
 
     rejected_block = ""
@@ -93,9 +88,7 @@ async def decide_topics(
     )
 
     round_ = await llm.complete_json(
-        # Topic deciding rides on Claude — it reasons over the news digest
-        # (search/news family per spec §8); writer model stays content-only.
-        "anthropic",
+        s.news_provider,
         s.news_model,
         system,
         "Generate today's 3 topic suggestions.",
@@ -106,7 +99,7 @@ async def decide_topics(
     except ValueError as exc:
         logger.warning("Topic round invalid (%s) — one retry", exc)
         round_ = await llm.complete_json(
-            "anthropic",
+            s.news_provider,
             s.news_model,
             system,
             f"Generate today's 3 topic suggestions. Previous attempt was invalid: {exc}",

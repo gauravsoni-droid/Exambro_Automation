@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     writer_model: str = "gemini-3.0-pro"
     critic_provider: Provider = "anthropic"
     critic_model: str = "claude-opus-4-8"
+    news_provider: Provider = "anthropic"
     news_model: str = "claude-opus-4-8"
     image_model: str = "gpt-image-2"
 

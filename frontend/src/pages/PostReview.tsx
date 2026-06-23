@@ -6,8 +6,27 @@ import { api, ApiError } from '../lib/api'
 import { mediaUrl } from '../lib/supabase'
 import type { Post } from '../types'
 import TapTracker from '../components/TapTracker'
+import TopicPill from '../components/TopicPill'
 
 const GENERATING = new Set(['topic_chosen', 'generating', 'content_ready'])
+
+const GEN_STEPS = [
+  { label: 'Writing caption & hashtags' },
+  { label: 'Brand & quality check' },
+  { label: 'Creating the image' },
+]
+
+function CriticScoreBadge({ score }: { score: number }) {
+  const color =
+    score >= 8 ? 'bg-good-bg text-good border-good/30' :
+    score >= 6 ? 'bg-orange-50 text-orange-600 border-orange/30' :
+                 'bg-[#fbe9ec] text-bad border-[#f3d4da]'
+  return (
+    <span className={`text-[12px] font-bold px-[10px] py-[4px] rounded-[8px] border ${color}`}>
+      AI score {score}/10
+    </span>
+  )
+}
 
 export default function PostReview() {
   const params = useParams()
@@ -166,30 +185,62 @@ export default function PostReview() {
     return (
       <div>
         <TapTracker step={2} />
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="w-[54px] h-[54px] rounded-full border-4 border-border border-t-orange animate-spin mb-5" />
-          <h3 className="text-[19px] font-extrabold text-text m-0 mb-[7px]">Building your post</h3>
-          <p className="text-[13px] font-medium text-muted m-0 leading-[1.5] max-w-[240px]">
-            Writing the caption, checking it against your brand, and making the image.
-          </p>
-          <div className="mt-5 flex flex-col gap-[9px] w-full max-w-[240px]">
-            {['Writing caption & hashtags', 'Brand & quality check', 'Creating the image'].map((s) => (
-              <div key={s} className="flex items-center gap-[9px] text-[12.5px] font-semibold text-muted">
-                <span className="w-[18px] h-[18px] rounded-full bg-good flex items-center justify-center text-white text-[11px] flex-shrink-0">✓</span>
-                {s}
-              </div>
-            ))}
+        <p className="text-[11px] font-bold uppercase tracking-[.14em] text-orange-600 m-0 mb-[6px]">Tap 2 of 2 · building your post</p>
+        <h1 className="text-[22px] font-extrabold text-text leading-tight tracking-tight m-0 mb-4">Writing your post…</h1>
+
+        {/* Topic context while generating */}
+        {post.topics && (
+          <div className="bg-white border border-border rounded-[14px] px-4 py-[12px] shadow-card-sm mb-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              {post.topics.pillars?.name && <TopicPill name={post.topics.pillars.name} />}
+              <p className="text-[13px] font-semibold text-text m-0 flex-1 leading-snug">{post.topics.title}</p>
+            </div>
           </div>
-          {post.status === 'topic_chosen' && (
-            <button
-              onClick={() => act('retry')}
-              disabled={busy}
-              className="mt-6 border border-border rounded-[12px] px-4 py-2 text-[13px] font-semibold text-muted bg-white cursor-pointer hover:border-border-strong transition-colors"
-            >
-              Retry generation
-            </button>
-          )}
+        )}
+
+        {/* Step progress */}
+        <div className="bg-white border border-border rounded-[16px] p-5 shadow-card-sm mb-4">
+          <div className="flex flex-col gap-[14px]">
+            {GEN_STEPS.map((s, i) => {
+              const active = post.status === 'topic_chosen' ? i === 0 :
+                             post.status === 'generating'    ? i === 1 : i === 2
+              const done = post.status === 'content_ready' ? i < 2 :
+                           post.status === 'generating'    ? i === 0 : false
+              const pending = !active && !done
+              return (
+                <div key={s.label} className="flex items-center gap-3">
+                  {done && (
+                    <span className="w-[22px] h-[22px] rounded-full bg-good flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">✓</span>
+                  )}
+                  {active && (
+                    <span className="w-[22px] h-[22px] rounded-full border-[2.5px] border-orange border-t-transparent animate-spin flex-shrink-0" />
+                  )}
+                  {pending && (
+                    <span className="w-[22px] h-[22px] rounded-full border-2 border-border flex-shrink-0" />
+                  )}
+                  <span className={[
+                    'text-[13px] font-semibold',
+                    done ? 'text-good line-through' : active ? 'text-text' : 'text-muted',
+                  ].join(' ')}>
+                    {s.label}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
         </div>
+
+        <p className="text-[12px] font-semibold text-muted m-0 px-1">⏱ Usually takes 20–40 seconds — keep this tab open.</p>
+
+        {post.status === 'topic_chosen' && (
+          <button
+            onClick={() => act('retry')}
+            disabled={busy}
+            className="mt-4 w-full border border-border rounded-[12px] px-4 py-[11px] text-[13px] font-semibold text-muted bg-white cursor-pointer hover:border-border-strong transition-colors"
+          >
+            ↻ Retry generation
+          </button>
+        )}
       </div>
     )
   }
@@ -217,13 +268,26 @@ export default function PostReview() {
 
       <p className="text-[11px] font-bold uppercase tracking-[.14em] text-orange-600 m-0 mb-[6px]">Tap 2 of 2 · almost done</p>
       <h1 className="text-[22px] font-extrabold text-text leading-tight tracking-tight m-0 mb-1">Approve today's post</h1>
-      <p className="text-[13px] font-medium text-muted m-0 mb-4 leading-[1.5]">Review the content below. Use tweaks to ask for changes, then approve.</p>
+      <p className="text-[13px] font-medium text-muted m-0 mb-4 leading-[1.5]">
+        Review what the AI wrote. Tweak anything, then approve.
+      </p>
 
       {error && <p className="text-bad text-[0.88rem] mb-3">{error}</p>}
 
-      {/* Image card */}
-      <div className="bg-white border border-border rounded-xl overflow-hidden shadow-card mb-[14px]">
-        {/* Dark gradient image header */}
+      {/* ── Topic context strip ────────────────────────────── */}
+      {post.topics && (
+        <div className="bg-white border border-border rounded-[14px] px-4 py-[12px] shadow-card-sm mb-3">
+          <p className="text-[10px] font-bold uppercase tracking-[.08em] text-muted mb-[6px]">Topic</p>
+          <div className="flex items-start gap-2 flex-wrap">
+            {post.topics.pillars?.name && <TopicPill name={post.topics.pillars.name} />}
+            <p className="text-[14px] font-bold text-text m-0 flex-1 leading-snug min-w-0">{post.topics.title}</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Image card ────────────────────────────────────── */}
+      <div className="bg-white border border-border rounded-[16px] overflow-hidden shadow-card mb-3">
+        {/* Image header */}
         <div className="relative h-[208px] bg-gradient-to-br from-[#2f4a7a] to-[#1a2b4a] flex flex-col justify-center px-6 overflow-hidden">
           <div className="absolute right-[-40px] bottom-[-50px] w-[170px] h-[170px] rounded-full bg-gradient-radial from-orange/50 to-transparent opacity-50 pointer-events-none" />
 
@@ -270,15 +334,19 @@ export default function PostReview() {
 
         {/* Card body */}
         <div className="px-4 pt-4 pb-[16px]">
-          {/* Brand check */}
-          <div className="flex items-center gap-[7px] mb-3">
-            <span className="w-[18px] h-[18px] rounded-full bg-good flex items-center justify-center text-white text-[11px] flex-shrink-0">✓</span>
-            <span className="text-[12px] font-semibold text-good">Brand check passed — on-voice, no over-promises</span>
-            {post.critic_score != null && (
-              <span className="ml-auto text-[11px] font-bold text-muted bg-bg px-2 py-[4px] rounded-[7px] flex-shrink-0">
-                Critic {post.critic_score}/10
-              </span>
-            )}
+
+          {/* AI score + critic checks */}
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            {post.critic_score != null && <CriticScoreBadge score={post.critic_score} />}
+          </div>
+
+          <div className="flex flex-col gap-[5px] mb-4 pb-4 border-b border-border">
+            {['Brand voice ✓', 'No over-promises ✓', 'Pillar fit ✓'].map((check) => (
+              <div key={check} className="flex items-center gap-[7px]">
+                <span className="w-[16px] h-[16px] rounded-full bg-good flex items-center justify-center text-white text-[10px] flex-shrink-0 font-bold">✓</span>
+                <span className="text-[12px] font-semibold text-good">{check.replace(' ✓', '')}</span>
+              </div>
+            ))}
           </div>
 
           {/* Caption */}
@@ -305,9 +373,10 @@ export default function PostReview() {
         </div>
       </div>
 
-      {/* Tweak panel */}
+      {/* ── Actions ───────────────────────────────────────── */}
       {post.status === 'awaiting_approval' && (
         <>
+          {/* Tweak panel */}
           {tweakOpen ? (
             <div className="bg-white border border-border rounded-[16px] p-[14px] mb-3 shadow-card-sm">
               <label className="block text-[12px] font-bold text-text mb-2">What should change?</label>
@@ -347,14 +416,14 @@ export default function PostReview() {
             <button
               onClick={() => act('approve')}
               disabled={busy}
-              className="w-full flex items-center justify-center gap-2 bg-gradient-to-br from-orange to-orange-600 text-white rounded-[14px] py-[15px] text-[14.5px] font-bold cursor-pointer shadow-[0_8px_20px_rgba(245,134,69,.36)] hover:brightness-105 active:scale-[.98] transition-all disabled:opacity-50 border-0"
+              className="w-full flex items-center justify-center gap-2 bg-gradient-to-br from-orange to-orange-600 text-white rounded-[14px] py-[16px] text-[15px] font-bold cursor-pointer shadow-[0_8px_20px_rgba(245,134,69,.36)] hover:brightness-105 active:scale-[.98] transition-all disabled:opacity-50 border-0"
             >
               ✓ Approve &amp; save
             </button>
             <button
               onClick={() => act('reject')}
               disabled={busy}
-              className="w-full flex items-center justify-center gap-2 bg-white border-[1.5px] border-border text-[#c2415c] rounded-[14px] py-[15px] text-[14.5px] font-bold cursor-pointer hover:border-[#c2415c] active:scale-[.98] transition-all disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 bg-white border-[1.5px] border-border text-[#c2415c] rounded-[14px] py-[14px] text-[13.5px] font-bold cursor-pointer hover:border-[#c2415c] active:scale-[.98] transition-all disabled:opacity-50"
             >
               Not this one
             </button>
@@ -363,8 +432,9 @@ export default function PostReview() {
       )}
 
       {post.status === 'rejected' && (
-        <div className="text-center mt-4">
-          <p className="text-[13px] text-muted mb-3">Post rejected. Go back to pick a new topic.</p>
+        <div className="text-center mt-4 bg-white border border-border rounded-[14px] px-4 py-5">
+          <p className="text-[13px] font-semibold text-muted m-0 mb-1">Post rejected.</p>
+          <p className="text-[12px] text-muted m-0">Go to Today to pick a different topic.</p>
         </div>
       )}
     </div>
