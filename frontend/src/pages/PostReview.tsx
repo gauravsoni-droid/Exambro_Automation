@@ -48,6 +48,7 @@ export default function PostReview() {
       setError('')
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Failed to load post')
+      timer.current = setTimeout(load, 5000)
     } finally {
       setLoading(false)
     }
@@ -134,6 +135,20 @@ export default function PostReview() {
   const firstGen = generating && !post.caption
   const regeneratingImages = generating && !!post.caption
   const hashtags = post.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' ')
+
+  // DEBUG — remove after image rendering is confirmed
+  console.log('[PostReview]', {
+    status: post?.status,
+    format: post?.format,
+    image_paths: post?.image_paths,
+    imageCount: post?.image_paths?.length,
+    generating,
+    regeneratingImages,
+    imgCondition: (post?.image_paths?.length ?? 0) > 0 && !regeneratingImages,
+    mediaUrlResult: (post?.image_paths?.length ?? 0) > 0
+      ? (() => { try { return mediaUrl(post.image_paths[0]) } catch(e) { return String(e) } })()
+      : '(no paths)',
+  })
 
   // ── Done state ───────────────────────────────────────────
   if (post.status === 'saved') {
@@ -310,8 +325,21 @@ export default function PostReview() {
 
           {regeneratingImages && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#1a2b4a]/80">
-              <div className="w-8 h-8 rounded-full border-4 border-white/30 border-t-white animate-spin mb-3" />
-              <p className="text-white text-[12px] font-semibold">Regenerating image…</p>
+              {post.status !== 'topic_chosen' && (
+                <div className="w-8 h-8 rounded-full border-4 border-white/30 border-t-white animate-spin mb-3" />
+              )}
+              <p className="text-white text-[12px] font-semibold">
+                {post.status === 'topic_chosen' ? 'Generation failed' : 'Regenerating image…'}
+              </p>
+              {post.status === 'topic_chosen' && (
+                <button
+                  onClick={() => act('retry')}
+                  disabled={busy}
+                  className="mt-3 px-4 py-1.5 rounded-full bg-white/20 text-white text-[11px] font-semibold hover:bg-white/30 disabled:opacity-50"
+                >
+                  ↻ Retry
+                </button>
+              )}
             </div>
           )}
 

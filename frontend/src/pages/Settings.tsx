@@ -7,6 +7,7 @@ import Button from '../components/Button'
 import { Input } from '../components/Input'
 import Toggle from '../components/Toggle'
 import SegControl from '../components/SegControl'
+import { useToast } from '../components/Toast'
 
 const CADENCE_OPTIONS = [
   { label: 'Daily',      value: 'daily' },
@@ -62,6 +63,7 @@ function BareInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
 // ── Main component ────────────────────────────────────────────
 
 export default function Settings() {
+  const { toast } = useToast()
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [pillars, setPillars]   = useState<Pillar[]>([])
   const [newPillar, setNewPillar]       = useState('')
@@ -116,8 +118,10 @@ export default function Settings() {
       setNewPillar('')
       setAddingPillar(false)
       await load()
+      toast('Pillar added')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Add pillar failed')
+      toast('Add pillar failed', 'error')
     }
   }
 
@@ -128,8 +132,10 @@ export default function Settings() {
         active: p.active, sort_order: p.sort_order, ...changes,
       })
       await load()
+      toast(changes.active !== undefined ? (changes.active ? 'Pillar enabled' : 'Pillar disabled') : 'Pillar updated')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Update failed')
+      toast('Update failed', 'error')
     }
   }
 
@@ -137,8 +143,10 @@ export default function Settings() {
     try {
       await api.delete(`/pillars/${id}`)
       await load()
+      toast('Pillar removed')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Delete failed')
+      toast('Delete failed', 'error')
     }
   }
 
@@ -417,21 +425,6 @@ export default function Settings() {
 
       {/* bottom padding */}
       <div className="pb-8" />
-
-      {/* DEV ONLY — remove before production */}
-      <div className="border border-dashed border-red-300 rounded-xl p-4 mb-8">
-        <p className="text-[11px] font-bold uppercase tracking-widest text-red-400 mb-3">Dev tools</p>
-        <Button
-          onClick={async () => {
-            const res = await api.post('/calibration/promote')
-            console.log('[promote]', res)
-          }}
-          size="small"
-        >
-          Test Calibration Promotion
-        </Button>
-      </div>
-      {/* END DEV ONLY */}
     </div>
   )
 }

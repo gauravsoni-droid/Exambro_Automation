@@ -29,7 +29,12 @@ _PLAN_SYSTEM = (
     "(exactly 2 prompts) ONLY when the caption is clearly a multi-point list or "
     "step-by-step. NEVER produce more than 2 images.\n"
     "- Each prompt must be self-contained and explicit about layout, colors, and the "
-    "exact English text to render (quote it)."
+    "exact English text to render (quote it).\n\n"
+    'OUTPUT: return a JSON object with key "prompts" — an array of 1 or 2 image-generation '
+    'strings you composed above — and key "is_carousel" (true only when 2 prompts). '
+    "Do NOT return the schema itself. Fill in actual prompt text.\n"
+    'Single-image example: {"prompts": ["Vivid blue portrait. Bold white heading: \'JEE MAINS 2025 Open\'. Subtext: \'Apply Now\'. Flat modern design."], "is_carousel": false}\n'
+    'Carousel example: {"prompts": ["Slide 1: ...", "Slide 2: ..."], "is_carousel": true}'
 )
 
 

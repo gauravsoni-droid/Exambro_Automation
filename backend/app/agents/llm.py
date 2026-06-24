@@ -55,6 +55,23 @@ async def complete(
         )
         return resp.choices[0].message.content or ""
 
+    if provider == "kimi":
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(
+            api_key=s.moonshot_api_key,
+            base_url="https://api.moonshot.ai/v1",
+        )
+        resp = await client.chat.completions.create(
+            model=model,
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+        return resp.choices[0].message.content or ""
+
     if provider == "google":
         from google import genai
         from google.genai import types
@@ -121,7 +138,7 @@ async def claude_web_search(system: str, user: str, max_tokens: int = 4096) -> s
     s = get_settings()
     client = AsyncAnthropic(api_key=s.anthropic_api_key)
     resp = await client.messages.create(
-        model=s.news_model,
+        model="claude-opus-4-8",
         max_tokens=max_tokens,
         system=system,
         tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 8}],

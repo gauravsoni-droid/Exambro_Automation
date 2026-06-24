@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # backend/.env — each app owns its env (frontend/.env is Vite's)
 _ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
-Provider = Literal["anthropic", "openai", "google"]
+Provider = Literal["anthropic", "openai", "google", "kimi"]
 
 
 class Settings(BaseSettings):
@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     google_api_key: str = ""
+    moonshot_api_key: str = ""
 
     # Models. Writer = Phase-0 bake-off winner (pin exact ID once picked).
     # Critic MUST be a different family from writer — validated at startup.

@@ -239,6 +239,7 @@ class TweakIn(BaseModel):
 class CalibrationItemOut(BaseModel):
     id: str
     content: str
+    hashtags: list[str] = Field(default_factory=list)
     owner_verdict: Verdict | None = None
     critic_verdict: Verdict | None = None  # only revealed after owner saves
     critic_score: float | None = None
@@ -254,3 +255,10 @@ class CalibrationSummary(BaseModel):
     labeled: int
     agreed: int
     pass_gate: bool  # ≥80% agreement on 50 (40/50)
+
+
+class CalibrationBatchStatus(BaseModel):
+    generating: bool
+    generated: int
+    total: int
+    error: str | None = None

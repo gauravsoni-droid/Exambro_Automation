@@ -105,6 +105,7 @@ export interface QueueStats {
 export interface CalibrationItem {
   id: string
   content: string
+  hashtags: string[]
   owner_verdict: Verdict | null
   critic_verdict: Verdict | null
   critic_score: number | null
@@ -116,4 +117,11 @@ export interface CalibrationSummary {
   labeled: number
   agreed: number
   pass_gate: boolean
+}
+
+export interface CalibrationBatchStatus {
+  generating: boolean
+  generated: number
+  total: number
+  error: string | null
 }

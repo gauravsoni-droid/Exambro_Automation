@@ -1,11 +1,17 @@
 """Tap-2 endpoints — Post review screen."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from app.api.deps import require_owner
 from app.db import get_db
 from app.pipeline import orchestrator
 from app.schemas import PostOut, TweakIn
+
+
+class PostPatchIn(BaseModel):
+    caption: str | None = None
+    hashtags: list[str] | None = None
 
 router = APIRouter(prefix="/posts", tags=["posts"], dependencies=[Depends(require_owner)])
 
@@ -41,6 +47,33 @@ def get_post(post_id: str) -> PostOut:
     if not rows:
         raise HTTPException(404, "Post not found")
     return PostOut(**rows[0])
+
+
+@router.patch("/{post_id}", response_model=PostOut)
+def patch_post(post_id: str, body: PostPatchIn) -> PostOut:
+    """Direct caption / hashtag edit — saved without AI rewrite."""
+    rows = get_db().table("posts").select("id,status").eq("id", post_id).execute().data
+    if not rows:
+        raise HTTPException(404, "Post not found")
+    if rows[0]["status"] != "awaiting_approval":
+        raise HTTPException(409, "Can only edit posts that are awaiting approval")
+    updates: dict = {}
+    if body.caption is not None:
+        updates["caption"] = body.caption
+    if body.hashtags is not None:
+        updates["hashtags"] = body.hashtags
+    if not updates:
+        raise HTTPException(422, "Nothing to update")
+    result = (
+        get_db()
+        .table("posts")
+        .update(updates)
+        .eq("id", post_id)
+        .select("*, topics(title, round_date, pillar_id, pillars(name))")
+        .execute()
+        .data
+    )
+    return PostOut(**result[0])
 
 
 @router.post("/{post_id}/approve", response_model=PostOut)
