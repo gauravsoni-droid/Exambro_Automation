@@ -1,0 +1,3 @@
+-- SUPERSEDED by 0003_instagram.sql which adds these columns with `if not exists`.
+-- This file is intentionally empty to avoid a duplicate-0002 naming conflict with
+-- 0002_calibration_hashtags.sql.

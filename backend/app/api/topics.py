@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.deps import require_owner
 from app.db import get_db
@@ -58,10 +58,21 @@ def today_topics() -> list[TopicOut]:
 
 
 @router.post("/{topic_id}/pick")
-def pick(topic_id: str) -> dict:
-    """Tap 1 — pick 1 of 3. Generation starts in the background."""
+def pick(
+    topic_id: str,
+    format_hint: str = Query(default="auto", alias="format"),
+) -> dict:
+    """Tap 1 — pick 1 of 3. Generation starts in the background.
+
+    ?format=post | reel | auto (default).  "auto" defers to format_decider.
+    """
+    if format_hint not in ("post", "reel", "auto"):
+        raise HTTPException(400, f"Invalid format '{format_hint}'. Must be post, reel, or auto.")
     try:
-        post = orchestrator.pick_topic(topic_id)
+        post = orchestrator.pick_topic(
+            topic_id,
+            format_hint=format_hint if format_hint in ("post", "reel") else None,
+        )
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
     orchestrator.spawn_generation(post["id"])

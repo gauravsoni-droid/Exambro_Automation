@@ -1,9 +1,7 @@
 {
   "/today/page": "app/today/page.js",
+  "/review/page": "app/review/page.js",
   "/queue/page": "app/queue/page.js",
-  "/review/[postId]/page": "app/review/[postId]/page.js",
-  "/ideas/page": "app/ideas/page.js",
-  "/insights/page": "app/insights/page.js",
   "/settings/page": "app/settings/page.js",
-  "/calibration/page": "app/calibration/page.js"
+  "/review/[postId]/page": "app/review/[postId]/page.js"
 }

@@ -176,6 +176,10 @@ class PostOut(BaseModel):
     status: PostStatus
     created_at: datetime | None = None
     topics: PostTopicRef | None = None
+    instagram_post_id: str | None = None
+    published_at: datetime | None = None
+    publish_status: str | None = None
+    publish_error: str | None = None
 
 
 class IdeaIn(BaseModel):
@@ -206,6 +210,7 @@ class PillarOut(PillarIn):
 class SettingsOut(BaseModel):
     id: str
     cadence: Cadence
+    bf_brand_name: str | None = None
     bf_who_we_serve: str | None = None
     bf_core_values: str | None = None
     bf_liked_topics: str | None = None
@@ -216,10 +221,13 @@ class SettingsOut(BaseModel):
     ta_who: str | None = None
     english_allowlist: list[str] = Field(default_factory=list)
     competitor_handles: list[str] = Field(default_factory=list)
+    content_language: str = 'hi'
+    ig_auto_publish: bool = False
 
 
 class SettingsIn(BaseModel):
     cadence: Cadence | None = None
+    bf_brand_name: str | None = None
     bf_who_we_serve: str | None = None
     bf_core_values: str | None = None
     bf_liked_topics: str | None = None
@@ -230,6 +238,8 @@ class SettingsIn(BaseModel):
     ta_who: str | None = None
     english_allowlist: list[str] | None = None
     competitor_handles: list[str] | None = None
+    content_language: str | None = None
+    ig_auto_publish: bool | None = None
 
 
 class TweakIn(BaseModel):

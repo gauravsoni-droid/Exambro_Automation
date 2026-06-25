@@ -47,6 +47,10 @@ export interface Post {
     pillar_id?: string | null
     pillars: { name: string } | null
   } | null
+  instagram_post_id: string | null
+  published_at: string | null
+  publish_status: string | null
+  publish_error: string | null
 }
 
 export interface Idea {
@@ -71,6 +75,7 @@ export interface Pillar {
 export interface AppSettings {
   id: string
   cadence: Cadence
+  bf_brand_name: string | null
   bf_who_we_serve: string | null
   bf_core_values: string | null
   bf_liked_topics: string | null
@@ -81,6 +86,8 @@ export interface AppSettings {
   ta_who: string | null
   english_allowlist: string[]
   competitor_handles: string[]
+  content_language: string
+  ig_auto_publish: boolean
 }
 
 export interface QueueItem extends Post {

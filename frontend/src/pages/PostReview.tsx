@@ -38,6 +38,9 @@ export default function PostReview() {
   const [tweak, setTweak] = useState('')
   const [tweakOpen, setTweakOpen] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const savedPollCount = useRef(0)
+  const retryPending = useRef(false)
+  const [retrying, setRetrying] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -57,11 +60,35 @@ export default function PostReview() {
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
-    if (post && GENERATING.has(post.status)) {
-      timer.current = setTimeout(load, 5000)
+    // Reset counter whenever we move out of the saved state
+    if (post && post.status !== 'saved') savedPollCount.current = 0
+
+    const needsPoll =
+      post && (
+        GENERATING.has(post.status) ||
+        // Poll on saved only while publish_status is pending, up to 5 times (~15 s).
+        // After that we stop — auto-publish may be off and null is the permanent state.
+        (post.status === 'saved' && post.publish_status === null && savedPollCount.current < 5)
+      )
+    if (needsPoll) {
+      if (post!.status === 'saved') savedPollCount.current += 1
+      timer.current = setTimeout(load, 3000)
     }
     return () => clearTimeout(timer.current)
   }, [post, load])
+
+  async function retryPublish() {
+    if (!post || retrying) return
+    setRetrying(true)
+    retryPending.current = true
+    try {
+      await api.post(`/posts/${post.id}/publish`)
+      savedPollCount.current = 0  // allow the poll loop to resume
+      await load()
+    } finally {
+      setRetrying(false)
+    }
+  }
 
   async function act(action: 'approve' | 'reject' | 'retry') {
     if (!post || busy) return
@@ -166,17 +193,64 @@ export default function PostReview() {
             That's your two taps done. Check back tomorrow for your next topic.
           </p>
 
-          <div className="w-full bg-white border border-border rounded-[16px] px-4 py-[14px] shadow-card-sm text-left flex items-center gap-3 mb-[10px]">
-            <div className="w-[38px] h-[38px] rounded-[11px] bg-good-bg flex items-center justify-center flex-shrink-0">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
-                <path d="M20 6L9 17l-5-5" stroke="#058e6e" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+          {/* ── Publish status card ──────────────────────── */}
+          {retryPending.current && post.publish_status === null ? (
+            <div className="w-full bg-white border border-border rounded-[16px] px-4 py-[14px] shadow-card-sm text-left flex items-center gap-3 mb-[10px]">
+              <span className="w-[38px] h-[38px] rounded-[11px] bg-[#f0f0f0] flex items-center justify-center flex-shrink-0">
+                <span className="w-[18px] h-[18px] border-[2.5px] border-accent border-t-transparent rounded-full animate-spin" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13.5px] font-bold text-text m-0 mb-[3px] leading-tight">Publishing…</p>
+                <p className="text-[12px] font-medium text-muted m-0">Uploading to Instagram</p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[13.5px] font-bold text-text m-0 mb-[3px] leading-tight">Saved and approved</p>
-              <p className="text-[12px] font-medium text-muted m-0">Publishing stays manual in Phase 1</p>
+          ) : post.publish_status === 'published' ? (
+            <div className="w-full bg-white border border-[#c3e6cb] rounded-[16px] px-4 py-[14px] shadow-card-sm text-left flex items-center gap-3 mb-[10px]">
+              <div className="w-[38px] h-[38px] rounded-[11px] bg-good-bg flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                  <path d="M20 6L9 17l-5-5" stroke="#058e6e" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13.5px] font-bold text-text m-0 mb-[3px] leading-tight">Published to Instagram</p>
+                <p className="text-[12px] font-medium text-muted m-0">Live on your profile now</p>
+              </div>
             </div>
-          </div>
+          ) : post.publish_status === 'failed' ? (
+            <div className="w-full bg-white border border-[#f3d4da] rounded-[16px] px-4 py-[14px] shadow-card-sm text-left flex items-center gap-3 mb-[10px]">
+              <div className="w-[38px] h-[38px] rounded-[11px] bg-[#fbe9ec] flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                  <path d="M12 8v4m0 4h.01" stroke="#c2415c" strokeWidth="2" strokeLinecap="round" />
+                  <circle cx="12" cy="12" r="9" stroke="#c2415c" strokeWidth="2" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13.5px] font-bold text-text m-0 mb-[3px] leading-tight">Instagram publish failed</p>
+                <p className="text-[12px] font-medium text-muted m-0 truncate">
+                  {post.publish_error ?? 'Unknown error — check server logs'}
+                </p>
+              </div>
+              <button
+                onClick={retryPublish}
+                disabled={retrying}
+                className="flex-shrink-0 bg-text text-white text-[11.5px] font-bold rounded-[9px] px-3 py-[7px] border-0 cursor-pointer hover:bg-navy disabled:opacity-50 transition-colors"
+              >
+                {retrying ? 'Publishing…' : 'Retry'}
+              </button>
+            </div>
+          ) : post.publish_status === 'manual' || post.publish_status === null ? (
+            <div className="w-full bg-white border border-border rounded-[16px] px-4 py-[14px] shadow-card-sm text-left flex items-center gap-3 mb-[10px]">
+              <div className="w-[38px] h-[38px] rounded-[11px] bg-good-bg flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                  <path d="M20 6L9 17l-5-5" stroke="#058e6e" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13.5px] font-bold text-text m-0 mb-[3px] leading-tight">Saved and approved</p>
+                <p className="text-[12px] font-medium text-muted m-0">Publishing manually from Instagram</p>
+              </div>
+            </div>
+          ) : null}
 
           <div className="w-full bg-white border border-border rounded-[16px] px-4 py-[14px] shadow-card-sm text-left flex items-center gap-3">
             <div className="w-[38px] h-[38px] rounded-[11px] bg-accent-50 flex items-center justify-center flex-shrink-0">

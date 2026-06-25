@@ -50,6 +50,11 @@ class Settings(BaseSettings):
 
     dashboard_base_url: str = "http://localhost:5173"
 
+    # Instagram publishing (Meta Graph API) — token/user-id stay in env only
+    ig_access_token: str = ""
+    ig_user_id: str = ""
+    # ig_auto_publish is stored in the settings DB table, not here
+
     def validate_critic_family(self) -> None:
         if self.writer_provider == self.critic_provider:
             raise ValueError(

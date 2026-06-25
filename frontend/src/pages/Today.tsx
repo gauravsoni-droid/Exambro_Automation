@@ -6,6 +6,13 @@ import { api, ApiError } from '../lib/api'
 import type { Idea, Pillar, Topic } from '../types'
 import TapTracker from '../components/TapTracker'
 import TopicPill from '../components/TopicPill'
+import SegControl from '../components/SegControl'
+
+const FORMAT_OPTIONS = [
+  { label: 'Post',   value: 'post' },
+  { label: 'Reel',   value: 'reel' },
+  { label: 'Auto',   value: 'auto' },
+]
 
 const GEN_STEPS = [
   { label: 'Reading your Idea Box',   delay: 0     },
@@ -56,6 +63,7 @@ export default function Today() {
   const [showErrorDetail, setShowErrorDetail] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
+  const [selectedFormat, setSelectedFormat] = useState('auto')
   const router = useRouter()
 
   // Advance step indicators while generation is in flight
@@ -98,7 +106,7 @@ export default function Today() {
     setPickedId(id)
     setError('')
     try {
-      await api.post(`/topics/${id}/pick`)
+      await api.post(`/topics/${id}/pick?format=${selectedFormat}`)
       router.push('/review')
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Pick failed')
@@ -128,7 +136,13 @@ export default function Today() {
 
     try {
       const result = await api.post<{ created?: number; skipped?: string }>('/topics/run-round')
-      if (result.skipped) setNotice(`Skipped: ${result.skipped}`)
+      if (result.skipped === 'suggested topics already exist for today') {
+        setNotice("Today's topics are already available.")
+      } else if (result.skipped) {
+        setNotice(`Skipped: ${result.skipped}`)
+      } else {
+        setNotice('New topics generated.')
+      }
       await load()
       setGenerating(false)
       setGenComplete(true)
@@ -241,7 +255,9 @@ export default function Today() {
           Tap 1 of 2 · {elapsedLabel}
         </p>
         <h1 className="text-[22px] font-extrabold text-text leading-[1.18] tracking-tight m-0 mb-4">
-          Generating today's content…
+          {selectedFormat === 'post' ? 'Generating Image Post…'
+            : selectedFormat === 'reel' ? 'Generating Reel…'
+            : 'AI choosing best format…'}
         </h1>
 
         {/* 4-step progress card */}
@@ -334,6 +350,11 @@ export default function Today() {
         {error  && <p className="text-bad text-[0.88rem] mb-3">{error}</p>}
         {notice && <p className="text-muted text-[0.88rem] mb-3">{notice}</p>}
 
+        <div className="mb-4">
+          <p className="text-[11px] font-bold uppercase tracking-[.08em] text-muted mb-[8px]">Content format</p>
+          <SegControl options={FORMAT_OPTIONS} value={selectedFormat} onChange={setSelectedFormat} />
+        </div>
+
         <button
           onClick={generateNow}
           disabled={generating}
@@ -360,11 +381,17 @@ export default function Today() {
       <h1 className="text-[22px] font-extrabold text-text leading-[1.18] tracking-tight m-0 mb-1">
         Pick today's topic
       </h1>
-      <p className="text-[13px] font-medium text-muted m-0 mb-4 leading-[1.5]">
+      <p className="text-[13px] font-medium text-muted m-0 mb-3 leading-[1.5]">
         Tap a topic to start building your post — takes about 30 seconds.
       </p>
 
-      {error && <p className="text-bad text-[0.88rem] mb-3">{error}</p>}
+      <div className="mb-4">
+        <p className="text-[11px] font-bold uppercase tracking-[.08em] text-muted mb-[8px]">Content format</p>
+        <SegControl options={FORMAT_OPTIONS} value={selectedFormat} onChange={setSelectedFormat} />
+      </div>
+
+      {notice && <p className="text-[12.5px] font-medium text-muted m-0 mb-3">{notice}</p>}
+      {error  && <p className="text-bad text-[0.88rem] mb-3">{error}</p>}
 
       {topics.map((t) => {
         const isSelected = busy && pickedId === t.id

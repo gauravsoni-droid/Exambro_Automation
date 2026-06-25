@@ -8,6 +8,7 @@ Rules enforced here, not just in the prompt:
 
 import json
 import logging
+from datetime import datetime
 from typing import Any
 
 from app.agents import context, llm
@@ -35,6 +36,7 @@ async def decide_topics(
     pending_idea: dict[str, Any] | None,
     news: NewsDigest,
     settings_row: dict[str, Any],
+    now: datetime,
     rejected_titles: list[str] | None = None,
 ) -> TopicRound:
     s = get_settings()
@@ -69,6 +71,7 @@ async def decide_topics(
         )
 
     system = (
+        context.current_context(now) + "\n\n"
         "You are the topic strategist for ExamBro (@exambro.app), an Instagram account "
         "for JEE Mains / JEE Advanced / NEET / CUET / GUJCET aspirants and their teachers. "
         "Suggest exactly 3 Instagram post topics for today.\n\n"

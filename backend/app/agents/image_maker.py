@@ -7,9 +7,10 @@ signs off before this runs unattended.
 
 import base64
 import logging
+from datetime import datetime
 from typing import Any
 
-from app.agents import llm
+from app.agents import context, llm
 from app.config import get_settings
 from app.db import get_db
 from app.schemas import Draft, ImagePlan
@@ -38,14 +39,20 @@ _PLAN_SYSTEM = (
 )
 
 
-async def plan_images(topic: dict[str, Any], draft: Draft) -> ImagePlan:
+async def plan_images(
+    topic: dict[str, Any], draft: Draft, now: datetime | None = None
+) -> ImagePlan:
     s = get_settings()
+    settings_row = context.load_settings_row()
+    ta_block = context.target_audience_block(settings_row)
+    ctx_block = context.current_context(now) + "\n\n" if now is not None else ""
+    system = ctx_block + _PLAN_SYSTEM + (f"\n\n{ta_block}" if ta_block else "")
     user = (
         f"Topic: {topic['title']} — {topic.get('description') or ''}\n\n"
         f"Caption (Hindi, for context only — image text must be English):\n"
         f"{draft.caption}\n\nWrite the image plan."
     )
-    plan = await llm.complete_json(s.critic_provider, s.critic_model, _PLAN_SYSTEM, user, ImagePlan)
+    plan = await llm.complete_json(s.critic_provider, s.critic_model, system, user, ImagePlan)
     plan.is_carousel = len(plan.prompts) > 1
     return plan
 

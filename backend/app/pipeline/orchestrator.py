@@ -25,7 +25,7 @@ from app.agents import (
 from app.config import get_settings
 from app.db import get_db
 from app.schemas import Cadence, Draft, PostFormat, PostStatus, TopicStatus
-from app.services import email
+from app.services import email, instagram
 
 logger = logging.getLogger(__name__)
 
@@ -119,16 +119,24 @@ async def run_topic_round(
     today: date | None = None, rejected_titles: list[str] | None = None
 ) -> dict[str, Any]:
     """09:00 IST entry point (scheduler / POST /trigger). Safe to re-run."""
+    now = context.today_ist()
     db = get_db()
-    today = today or date.today()
+    today = today or now.date()
     settings_row = context.load_settings_row()
 
     # Idempotency + missed-day + one-in-flight guards
-    existing = (
-        db.table("topics").select("id").eq("round_date", today.isoformat()).limit(1).execute().data
+    # Only block if suggested topics still exist — picked/rejected rows don't count.
+    suggested_today = (
+        db.table("topics")
+        .select("id")
+        .eq("round_date", today.isoformat())
+        .eq("status", TopicStatus.suggested.value)
+        .limit(1)
+        .execute()
+        .data
     )
-    if existing and not rejected_titles:
-        return {"skipped": "round already exists for today"}
+    if suggested_today and not rejected_titles:
+        return {"skipped": "suggested topics already exist for today"}
     if _post_in_flight():
         return {"skipped": "a post is in flight — one post at a time"}
     if _unpicked_topics_waiting() and not rejected_titles:
@@ -141,13 +149,14 @@ async def run_topic_round(
         raise RuntimeError("Need at least 3 active pillars for a topic round")
 
     idea = _pending_idea()
-    news = await news_search.fetch_exam_news()
+    news = await news_search.fetch_exam_news(now)
     round_ = await topic_decider.decide_topics(
         pillars=pillars,
         yesterdays_pillar_id=_yesterdays_picked_pillar(today),
         pending_idea=idea,
         news=news,
         settings_row=settings_row,
+        now=now,
         rejected_titles=rejected_titles,
     )
 
@@ -177,8 +186,11 @@ async def run_topic_round(
     return {"created": 3, "round_date": today.isoformat()}
 
 
-def pick_topic(topic_id: str) -> dict[str, Any]:
-    """Tap 1 — owner picks 1 of 3. Returns the new post row (generation runs async)."""
+def pick_topic(topic_id: str, format_hint: str | None = None) -> dict[str, Any]:
+    """Tap 1 — owner picks 1 of 3. Returns the new post row (generation runs async).
+
+    format_hint: "post" or "reel" locks the format; None lets format_decider decide.
+    """
     db = get_db()
     topic = db.table("topics").select("*").eq("id", topic_id).single().execute().data
     if topic["status"] != TopicStatus.suggested.value:
@@ -192,18 +204,20 @@ def pick_topic(topic_id: str) -> dict[str, Any]:
     ).neq("id", topic_id).eq("status", TopicStatus.suggested.value).execute()
     db.table("approvals").insert({"topic_id": topic_id, "action": "tap1_pick"}).execute()
 
-    post = (
-        db.table("posts")
-        .insert(
-            {
-                "topic_id": topic_id,
-                "language": get_settings().content_language,
-                "status": PostStatus.topic_chosen.value,
-            }
-        )
-        .execute()
-        .data[0]
-    )
+    settings_rows = db.table("settings").select("content_language").limit(1).execute().data
+    lang = (settings_rows[0].get("content_language") or "") if settings_rows else ""
+    if not lang:
+        lang = get_settings().content_language
+
+    insert: dict[str, Any] = {
+        "topic_id": topic_id,
+        "language": lang,
+        "status": PostStatus.topic_chosen.value,
+    }
+    if format_hint in ("post", "reel"):
+        insert["format"] = format_hint
+
+    post = db.table("posts").insert(insert).execute().data[0]
     return post
 
 
@@ -267,6 +281,7 @@ async def run_generation(post_id: str, tweak_instruction: str | None = None) -> 
     Every draft + critique lands in post_versions. After MAX_CRITIC_LOOPS fails
     the draft still goes to the owner — the owner is the final gate (Appflow §4).
     """
+    now = context.today_ist()
     db = get_db()
     post = db.table("posts").select("*").eq("id", post_id).single().execute().data
     topic = db.table("topics").select("*").eq("id", post["topic_id"]).single().execute().data
@@ -279,7 +294,7 @@ async def run_generation(post_id: str, tweak_instruction: str | None = None) -> 
         if post.get("format"):
             format_ = PostFormat(post["format"])
         else:
-            decision = await format_decider.decide_format(topic)
+            decision = await format_decider.decide_format(topic, now)
             format_ = PostFormat(decision.format)
             db.table("posts").update({"format": format_.value}).eq("id", post_id).execute()
 
@@ -304,9 +319,9 @@ async def run_generation(post_id: str, tweak_instruction: str | None = None) -> 
         for _ in range(MAX_CRITIC_LOOPS):
             draft = await writer.write_draft(
                 topic, format_, language, settings_row,
-                revision_instructions=instructions, previous_draft=previous,
+                revision_instructions=instructions, previous_draft=previous, now=now,
             )
-            crit = await critic.critique_draft(draft, topic, format_, language, settings_row)
+            crit = await critic.critique_draft(draft, topic, format_, language, settings_row, now=now)
             version_no += 1
             _save_version(post_id, version_no, draft, crit)
             if critic.passes(crit):
@@ -329,14 +344,14 @@ async def run_generation(post_id: str, tweak_instruction: str | None = None) -> 
 
         # Image (post) or shoot-ready script (reel)
         if format_ == PostFormat.post:
-            plan = await image_maker.plan_images(topic, draft)
+            plan = await image_maker.plan_images(topic, draft, now)
             image_paths = await image_maker.generate_and_store(post_id, plan)
             db.table("posts").update(
                 {"image_paths": image_paths, "is_carousel": plan.is_carousel}
             ).eq("id", post_id).execute()
         else:
             final_script = await reel_scripter.finalize_script(
-                draft.script or draft.caption, topic, language, settings_row
+                draft.script or draft.caption, topic, language, settings_row, now=now
             )
             db.table("posts").update({"script": final_script}).eq("id", post_id).execute()
 
@@ -360,6 +375,7 @@ async def regenerate_images(post_id: str) -> None:
     generation. Flips to `generating` so the review screen polls, then restores
     `awaiting_approval` with fresh images (or restores it on failure).
     """
+    now = context.today_ist()
     db = get_db()
     post = db.table("posts").select("*").eq("id", post_id).single().execute().data
     if post["status"] != PostStatus.awaiting_approval.value:
@@ -377,7 +393,7 @@ async def regenerate_images(post_id: str) -> None:
             hashtags=post.get("hashtags") or [],
             script=post.get("script"),
         )
-        plan = await image_maker.plan_images(topic, draft)
+        plan = await image_maker.plan_images(topic, draft, now)
         image_paths = await image_maker.generate_and_store(post_id, plan)
         db.table("posts").update(
             {
@@ -439,21 +455,28 @@ def spawn_image_regen(post_id: str) -> None:
     _spawn(lambda: regenerate_images(post_id))
 
 
+def spawn_publish(post_id: str) -> None:
+    """Fire-and-forget explicit publish retry (bypasses ig_auto_publish gate)."""
+    _spawn(lambda: instagram.publish_post(post_id, force=True))
+
+
 # ── Tap 2 ────────────────────────────────────────────────────────────────────
 
 
 def approve_post(post_id: str) -> dict[str, Any]:
-    """Tap 2 Approve → approved package saved in DB. NO publish (Phase 3)."""
+    """Tap 2 Approve → saved in DB, then Instagram publish fires in the background."""
     db = get_db()
     _require_status(post_id, PostStatus.awaiting_approval)
     db.table("approvals").insert({"post_id": post_id, "action": "tap2_approve"}).execute()
-    return (
+    result = (
         db.table("posts")
         .update({"status": PostStatus.saved.value, "updated_at": "now()"})
         .eq("id", post_id)
         .execute()
         .data[0]
     )
+    _spawn(lambda: instagram.publish_post(post_id))
+    return result
 
 
 def tweak_post(post_id: str, instruction: str) -> None:

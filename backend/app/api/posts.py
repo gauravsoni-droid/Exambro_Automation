@@ -113,6 +113,29 @@ def retry(post_id: str) -> dict:
     return {"status": "generating"}
 
 
+@router.post("/{post_id}/publish")
+def publish(post_id: str) -> dict:
+    """Explicit publish / retry — allowed only when publish_status is 'failed' or 'manual'."""
+    db = get_db()
+    rows = db.table("posts").select("id,status,publish_status").eq("id", post_id).execute().data
+    if not rows:
+        raise HTTPException(404, "Post not found")
+    row = rows[0]
+    if row["status"] != "saved":
+        raise HTTPException(409, "Can only publish saved posts")
+    if row.get("publish_status") not in ("failed", "manual"):
+        raise HTTPException(
+            409,
+            f"publish_status is '{row.get('publish_status')}' — retry only when failed or manual",
+        )
+    # Clear previous result so the frontend polling detects the in-progress state
+    db.table("posts").update(
+        {"publish_status": None, "publish_error": None, "updated_at": "now()"}
+    ).eq("id", post_id).execute()
+    orchestrator.spawn_publish(post_id)
+    return {"status": "publishing"}
+
+
 @router.post("/{post_id}/regenerate-images")
 def regenerate_images(post_id: str) -> dict:
     """Image-only regenerate — keeps the caption, makes fresh images in the background."""

@@ -4,6 +4,7 @@ Model = Phase-0 bake-off winner (config). Language is a parameter, never
 hard-coded (TRD §3 hard requirement). Few-shot from real ExamBro posts.
 """
 
+from datetime import datetime
 from typing import Any
 
 from app.agents import context, llm
@@ -18,6 +19,7 @@ def _system_prompt(
     format_: PostFormat,
     settings_row: dict[str, Any],
     pillar: dict[str, Any] | None = None,
+    now: datetime | None = None,
 ) -> str:
     lang_name = context.LANGUAGE_NAMES.get(language, language)
     allowlist = settings_row.get("english_allowlist") or []
@@ -35,7 +37,9 @@ def _system_prompt(
             + (f" — {pillar['description']}" if pillar.get("description") else "")
             + "\nWrite content that fits this pillar's theme.\n\n"
         )
+    ctx_block = context.current_context(now) + "\n\n" if now is not None else ""
     return (
+        ctx_block +
         f"You are ExamBro's Instagram content writer. Write in {lang_name}.\n\n"
         f"{context.language_rule(language, allowlist)}\n\n"
         f"{context.brand_voice_block()}\n\n"
@@ -60,6 +64,7 @@ async def write_draft(
     settings_row: dict[str, Any],
     revision_instructions: str = "",
     previous_draft: Draft | None = None,
+    now: datetime | None = None,
 ) -> Draft:
     """First draft, critic-revision, and owner-tweak all flow through here."""
     s = get_settings()
@@ -83,7 +88,7 @@ async def write_draft(
     return await llm.complete_json(
         s.writer_provider,
         s.writer_model,
-        _system_prompt(language, format_, settings_row, pillar),
+        _system_prompt(language, format_, settings_row, pillar, now=now),
         user,
         Draft,
     )

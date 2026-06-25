@@ -1,10 +1,35 @@
 """Shared prompt context — settings, pillars, examples pulled from DB and
 rendered into prompt blocks. Language is ALWAYS a parameter (future English)."""
 
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app.config import get_settings
 from app.db import get_db
+
+
+def today_ist() -> datetime:
+    """Current datetime in IST (Asia/Kolkata). Use once per pipeline entry and pass down."""
+    return datetime.now(ZoneInfo("Asia/Kolkata"))
+
+
+def current_context(now: datetime) -> str:
+    """A prompt block that anchors every agent to today's real date and location rules."""
+    date_str = f"{now.day} {now.strftime('%B %Y')}"
+    return (
+        f"Current date: {date_str} (IST)\n\n"
+        "Treat this as today's date. Your training knowledge may be outdated.\n"
+        "For anything time-sensitive (exam dates, notifications, registrations, "
+        "latest news, trends), trust this date and live search instead of your "
+        "internal memory.\n\n"
+        "Never invent old years. "
+        "Never say '2025' or '2024' unless the topic explicitly refers to those years.\n\n"
+        "Target audience may live in a configured city. DO NOT mention the city "
+        "in titles or captions unless the topic is specifically local (local counselling, "
+        "local exam centre, district/state announcement, or city-specific admission dates). "
+        "Otherwise keep content national."
+    )
 
 LANGUAGE_NAMES = {"hi": "Hindi (Devanagari script)", "en": "English"}
 
@@ -55,6 +80,8 @@ def load_brand_guidelines() -> list[dict[str, Any]]:
 
 def business_foundation_block(settings_row: dict[str, Any]) -> str:
     parts = []
+    if settings_row.get("bf_brand_name"):
+        parts.append(f"Brand name: {settings_row['bf_brand_name']}")
     if settings_row.get("bf_who_we_serve"):
         parts.append(f"Who we serve: {settings_row['bf_who_we_serve']}")
     if settings_row.get("bf_core_values"):
@@ -122,4 +149,7 @@ def few_shot_block() -> str:
 
 
 def content_language() -> str:
+    rows = get_db().table("settings").select("content_language").limit(1).execute().data
+    if rows and rows[0].get("content_language"):
+        return rows[0]["content_language"]
     return get_settings().content_language

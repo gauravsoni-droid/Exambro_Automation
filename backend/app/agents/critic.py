@@ -5,6 +5,7 @@ agreement with the owner). Business-Foundation never-post list = HARD fail.
 Every critique is persisted to post_versions by the pipeline (drift monitoring).
 """
 
+from datetime import datetime
 from typing import Any
 
 from app.agents import context, llm
@@ -21,6 +22,7 @@ def _system_prompt(
     language: str,
     settings_row: dict[str, Any],
     pillar: dict[str, Any] | None = None,
+    now: datetime | None = None,
 ) -> str:
     lang_name = context.LANGUAGE_NAMES.get(language, language)
     allowlist = settings_row.get("english_allowlist") or []
@@ -31,7 +33,9 @@ def _system_prompt(
             + (f" — {pillar['description']}" if pillar.get("description") else "")
             + "\nEvaluate brand_voice and hook against this pillar's theme.\n\n"
         )
+    ctx_block = context.current_context(now) + "\n\n" if now is not None else ""
     return (
+        ctx_block +
         "You are a STRICT quality critic for ExamBro's Instagram content. You are the "
         "gate before a human sees the post — be demanding; a mediocre draft must fail.\n\n"
         f"{context.business_foundation_block(settings_row)}\n\n"
@@ -65,6 +69,7 @@ async def critique_draft(
     format_: PostFormat,
     language: str,
     settings_row: dict[str, Any],
+    now: datetime | None = None,
 ) -> Critique:
     s = get_settings()
     user = (
@@ -78,7 +83,7 @@ async def critique_draft(
     active_pillars = context.load_active_pillars()
     pillar = next((p for p in active_pillars if p["id"] == topic.get("pillar_id")), None)
     critique = await llm.complete_json(
-        s.critic_provider, s.critic_model, _system_prompt(language, settings_row, pillar), user, Critique
+        s.critic_provider, s.critic_model, _system_prompt(language, settings_row, pillar, now=now), user, Critique
     )
     # Hard-fail enforcement in code, not just the prompt
     if critique.never_post_violation:
