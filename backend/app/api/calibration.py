@@ -182,7 +182,7 @@ def all_items() -> list[CalibrationItemOut]:
     rows = (
         get_db()
         .table("calibration_items")
-        .select("id,content,hashtags,owner_verdict,critic_verdict,critic_score,agreed")
+        .select("id,content,hashtags,owner_verdict,owner_feedback,owner_comments,critic_verdict,critic_score,agreed")
         .order("created_at")
         .execute()
         .data
@@ -220,9 +220,16 @@ def next_item() -> CalibrationItemOut | None:
     return CalibrationItemOut(**rows[0]) if rows else None
 
 
+_FEEDBACK_TO_VERDICT: dict[str, str] = {
+    "approve": "good",
+    "needs_changes": "needs_work",
+    "reject": "needs_work",
+}
+
+
 @router.post("/{item_id}/label", response_model=CalibrationItemOut)
 async def label(item_id: str, body: CalibrationLabelIn) -> CalibrationItemOut:
-    """Save the owner's blind verdict, then run + reveal the critic's."""
+    """Save the owner's feedback verdict, run + reveal the critic's score."""
     db = get_db()
     rows = db.table("calibration_items").select("*").eq("id", item_id).execute().data
     if not rows:
@@ -231,11 +238,16 @@ async def label(item_id: str, body: CalibrationLabelIn) -> CalibrationItemOut:
     if item["owner_verdict"] is not None:
         raise HTTPException(409, "Already labeled")
 
-    db.table("calibration_items").update(
-        {"owner_verdict": body.verdict.value, "owner_labeled_at": "now()"}
-    ).eq("id", item_id).execute()
+    verdict_value = _FEEDBACK_TO_VERDICT[body.feedback]
+    db.table("calibration_items").update({
+        "owner_verdict": verdict_value,
+        "owner_feedback": body.feedback,
+        "owner_comments": body.comments,
+        "owner_labeled_at": "now()",
+    }).eq("id", item_id).execute()
 
     if item["critic_verdict"] is None:
+        now = context.today_ist()
         settings_row = context.load_settings_row()
         crit = await critic.critique_draft(
             Draft(caption=item["content"], hashtags=item.get("hashtags") or []),
@@ -243,6 +255,7 @@ async def label(item_id: str, body: CalibrationLabelIn) -> CalibrationItemOut:
             PostFormat.post,
             context.content_language(),
             settings_row,
+            now=now,
         )
         db.table("calibration_items").update(
             {"critic_verdict": crit.verdict.value, "critic_score": crit.overall_score}

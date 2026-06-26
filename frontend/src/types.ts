@@ -88,6 +88,7 @@ export interface AppSettings {
   competitor_handles: string[]
   content_language: string
   ig_auto_publish: boolean
+  adaptive_strategy_enabled: boolean
 }
 
 export interface QueueItem extends Post {
@@ -114,6 +115,8 @@ export interface CalibrationItem {
   content: string
   hashtags: string[]
   owner_verdict: Verdict | null
+  owner_feedback: 'approve' | 'needs_changes' | 'reject' | null
+  owner_comments: string | null
   critic_verdict: Verdict | null
   critic_score: number | null
   agreed: boolean | null

@@ -223,6 +223,7 @@ class SettingsOut(BaseModel):
     competitor_handles: list[str] = Field(default_factory=list)
     content_language: str = 'hi'
     ig_auto_publish: bool = False
+    adaptive_strategy_enabled: bool = True
 
 
 class SettingsIn(BaseModel):
@@ -240,6 +241,7 @@ class SettingsIn(BaseModel):
     competitor_handles: list[str] | None = None
     content_language: str | None = None
     ig_auto_publish: bool | None = None
+    adaptive_strategy_enabled: bool | None = None
 
 
 class TweakIn(BaseModel):
@@ -251,13 +253,16 @@ class CalibrationItemOut(BaseModel):
     content: str
     hashtags: list[str] = Field(default_factory=list)
     owner_verdict: Verdict | None = None
-    critic_verdict: Verdict | None = None  # only revealed after owner saves
+    owner_feedback: str | None = None   # approve | needs_changes | reject
+    owner_comments: str | None = None
+    critic_verdict: Verdict | None = None
     critic_score: float | None = None
     agreed: bool | None = None
 
 
 class CalibrationLabelIn(BaseModel):
-    verdict: Verdict
+    feedback: Literal["approve", "needs_changes", "reject"]
+    comments: str | None = None
 
 
 class CalibrationSummary(BaseModel):
