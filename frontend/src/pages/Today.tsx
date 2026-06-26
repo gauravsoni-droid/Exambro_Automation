@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api, ApiError } from '../lib/api'
-import type { Idea, Pillar, Topic } from '../types'
+import type { Idea, Pillar, Topic, TopicDecisionTrace } from '../types'
 import TapTracker from '../components/TapTracker'
 import TopicPill from '../components/TopicPill'
 import SegControl from '../components/SegControl'
@@ -46,6 +46,126 @@ function topicConfidence(t: Topic): { label: string; level: 1 | 2 | 3; reason: s
   }
 }
 
+const TRACE_SIGNALS: { key: keyof TopicDecisionTrace; label: string; icon: string }[] = [
+  { key: 'owner_idea',          label: 'Your idea',            icon: '💡' },
+  { key: 'breaking_news',       label: 'Breaking news',        icon: '🔥' },
+  { key: 'adaptive_strategy',   label: 'Adaptive strategy',    icon: '📅' },
+  { key: 'performance_signal',  label: 'Performance learning', icon: '📈' },
+  { key: 'competitor_signal',   label: 'Competitor analysis',  icon: '🔍' },
+  { key: 'business_foundation', label: 'Business foundation',  icon: '🏢' },
+]
+
+function TraceModal({ topic, onClose }: { topic: Topic; onClose: () => void }) {
+  const trace: TopicDecisionTrace = topic.decision_trace!
+  const phaseLabel = trace.exam_phase
+    ? trace.exam_phase.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    : null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-4 pb-6"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm bg-white rounded-[20px] shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b border-border">
+          <div>
+            <p className="text-[10.5px] font-bold uppercase tracking-[.12em] text-muted m-0">
+              Decision trace
+            </p>
+            <h2 className="text-[17px] font-extrabold text-text m-0 mt-[3px] leading-[1.2]">
+              Why this topic?
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-bg flex items-center justify-center text-muted text-[14px] border-0 cursor-pointer hover:bg-border transition-colors flex-shrink-0 mt-[2px]"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="px-5 pt-4 pb-1 space-y-[18px] max-h-[55vh] overflow-y-auto">
+          {/* Pillar */}
+          {trace.pillar_name && (
+            <div>
+              <p className="text-[10.5px] font-bold uppercase tracking-[.1em] text-muted m-0 mb-[7px]">
+                Selected pillar
+              </p>
+              <div className="flex items-center gap-[8px]">
+                <span className="w-[8px] h-[8px] rounded-full bg-orange flex-shrink-0" />
+                <span className="text-[14px] font-bold text-text">{trace.pillar_name}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Reasons */}
+          {trace.selection_reasons.length > 0 && (
+            <div>
+              <p className="text-[10.5px] font-bold uppercase tracking-[.1em] text-muted m-0 mb-[8px]">
+                Why this was chosen
+              </p>
+              <div className="flex flex-col gap-[8px]">
+                {trace.selection_reasons.map((r, i) => (
+                  <div key={i} className="flex items-start gap-[8px]">
+                    <span className="text-orange font-black text-[12px] mt-[2px] flex-shrink-0 leading-none">•</span>
+                    <span className="text-[12.5px] font-medium text-text leading-[1.45]">{r}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Active signals */}
+          <div>
+            <p className="text-[10.5px] font-bold uppercase tracking-[.1em] text-muted m-0 mb-[8px]">
+              Signals active
+            </p>
+            <div className="flex flex-col gap-[7px]">
+              {TRACE_SIGNALS.map(({ key, label, icon }) => {
+                const active = Boolean(trace[key])
+                return (
+                  <div key={String(key)} className="flex items-center gap-[9px]">
+                    <span className={`text-[12px] font-bold w-[14px] flex-shrink-0 ${active ? 'text-good' : 'text-border-strong'}`}>
+                      {active ? '✓' : '–'}
+                    </span>
+                    <span className="text-[12px] flex-shrink-0">{icon}</span>
+                    <span className={`text-[12.5px] font-semibold ${active ? 'text-text' : 'text-muted'}`}>
+                      {label}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Exam phase */}
+          {phaseLabel && (
+            <div>
+              <p className="text-[10.5px] font-bold uppercase tracking-[.1em] text-muted m-0 mb-[7px]">
+                Exam phase
+              </p>
+              <span className="inline-block bg-bg border border-border text-[12.5px] font-bold text-text px-3 py-[5px] rounded-[9px]">
+                {phaseLabel}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-border mt-1">
+          <p className="text-[11px] font-medium text-muted m-0 text-center leading-snug">
+            Signals shaped this topic, not the post content.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Today() {
   const [topics, setTopics] = useState<Topic[]>([])
   const [loading, setLoading] = useState(true)
@@ -64,6 +184,7 @@ export default function Today() {
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [selectedFormat, setSelectedFormat] = useState('auto')
+  const [traceModal, setTraceModal] = useState<Topic | null>(null)
   const router = useRouter()
 
   // Advance step indicators while generation is in flight
@@ -446,7 +567,18 @@ export default function Today() {
                   <ConfidenceDots level={conf.level} />
                 </div>
               </div>
-              <p className="text-[11.5px] font-semibold text-muted m-0 leading-snug">{conf.reason}</p>
+              <div className="flex items-center justify-between">
+                <p className="text-[11.5px] font-semibold text-muted m-0 leading-snug">{conf.reason}</p>
+                {t.decision_trace && (
+                  <a
+                    href="#"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTraceModal(t) }}
+                    className="text-[11px] font-bold text-orange shrink-0 ml-3 no-underline hover:underline"
+                  >
+                    Why?
+                  </a>
+                )}
+              </div>
             </div>
 
             {/* Tap indicator / selected state */}
@@ -483,6 +615,8 @@ export default function Today() {
           </p>
         )}
       </div>
+
+      {traceModal && <TraceModal topic={traceModal} onClose={() => setTraceModal(null)} />}
     </div>
   )
 }

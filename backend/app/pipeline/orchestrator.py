@@ -13,11 +13,14 @@ from datetime import date, timedelta
 from typing import Any
 
 from app.agents import (
+    competitor_fetcher,
     context,
     critic,
+    exam_calendar_fetcher,
     format_decider,
     image_maker,
     news_search,
+    performance_fetcher,
     reel_scripter,
     topic_decider,
     writer,
@@ -149,7 +152,12 @@ async def run_topic_round(
         raise RuntimeError("Need at least 3 active pillars for a topic round")
 
     idea = _pending_idea()
-    news = await news_search.fetch_exam_news(now)
+    news, comp_digest, perf_digest, adaptive_ctx = await asyncio.gather(
+        news_search.fetch_exam_news(now),
+        competitor_fetcher.fetch_competitor_trends(settings_row, now),
+        performance_fetcher.fetch_performance_signal(settings_row, now),
+        exam_calendar_fetcher.fetch_adaptive_context(settings_row, now),
+    )
     round_ = await topic_decider.decide_topics(
         pillars=pillars,
         yesterdays_pillar_id=_yesterdays_picked_pillar(today),
@@ -158,10 +166,23 @@ async def run_topic_round(
         settings_row=settings_row,
         now=now,
         rejected_titles=rejected_titles,
+        competitor_digest=comp_digest,
+        performance_digest=perf_digest,
+        adaptive_context=adaptive_ctx,
+    )
+
+    traces = topic_decider.build_traces(
+        round_=round_,
+        pillars=pillars,
+        pending_idea=idea,
+        settings_row=settings_row,
+        performance_digest=perf_digest,
+        competitor_digest=comp_digest,
+        adaptive_context=adaptive_ctx,
     )
 
     rows = []
-    for slot, t in enumerate(round_.topics, start=1):
+    for slot, (t, trace) in enumerate(zip(round_.topics, traces), start=1):
         rows.append(
             {
                 "round_date": today.isoformat(),
@@ -170,9 +191,14 @@ async def run_topic_round(
                 "description": t.description,
                 "pillar_id": t.pillar_id,
                 "is_rotation_exception": t.is_rotation_exception,
-                "from_idea_id": idea["id"] if (idea and slot == 1) else None,
+                "from_idea_id": (
+                    idea["id"]
+                    if (idea and slot == 1 and topic_decider.idea_matches(idea["payload"], t))
+                    else None
+                ),
                 "source_refs": t.source_refs,
                 "status": TopicStatus.suggested.value,
+                "decision_trace": trace.model_dump(mode="json"),
             }
         )
     db.table("topics").insert(rows).execute()

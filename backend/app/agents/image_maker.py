@@ -45,8 +45,14 @@ async def plan_images(
     s = get_settings()
     settings_row = context.load_settings_row()
     ta_block = context.target_audience_block(settings_row)
+    bf_block = context.business_foundation_block(settings_row)
     ctx_block = context.current_context(now) + "\n\n" if now is not None else ""
-    system = ctx_block + _PLAN_SYSTEM + (f"\n\n{ta_block}" if ta_block else "")
+    system = (
+        ctx_block
+        + _PLAN_SYSTEM
+        + (f"\n\n{ta_block}" if ta_block else "")
+        + (f"\n\n{bf_block}" if bf_block else "")
+    )
     user = (
         f"Topic: {topic['title']} — {topic.get('description') or ''}\n\n"
         f"Caption (Hindi, for context only — image text must be English):\n"

@@ -15,6 +15,18 @@ export type IdeaType = 'text' | 'image' | 'link'
 export type IdeaStatus = 'pending' | 'used' | 'discarded'
 export type Verdict = 'good' | 'needs_work'
 
+export interface TopicDecisionTrace {
+  pillar_name: string | null
+  selection_reasons: string[]
+  owner_idea: boolean
+  breaking_news: boolean
+  business_foundation: boolean
+  performance_signal: boolean
+  competitor_signal: boolean
+  adaptive_strategy: boolean
+  exam_phase: string | null
+}
+
 export interface Topic {
   id: string
   round_date: string
@@ -26,6 +38,7 @@ export interface Topic {
   is_rotation_exception: boolean
   from_idea_id: string | null
   status: TopicStatus
+  decision_trace: TopicDecisionTrace | null
 }
 
 export interface Post {
