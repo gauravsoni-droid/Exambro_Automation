@@ -1,11 +1,14 @@
 """Reel/Post decision agent — chooses format (and carousel-ness for posts)."""
 
+import logging
 from datetime import datetime
 from typing import Any
 
 from app.agents import context, llm
 from app.config import get_settings
 from app.schemas import FormatDecision
+
+logger = logging.getLogger(__name__)
 
 _SYSTEM = (
     "You decide the best Instagram format for a topic for an exam-prep account "
@@ -29,4 +32,9 @@ async def decide_format(topic: dict[str, Any], now: datetime) -> FormatDecision:
         f"Description: {topic.get('description') or ''}\n"
         "Decide the format."
     )
-    return await llm.complete_json(s.critic_provider, s.critic_model, system, user, FormatDecision)
+    decision = await llm.complete_json(s.critic_provider, s.critic_model, system, user, FormatDecision)
+    logger.info(
+        "[CAROUSEL-TRACE 1/6] format_decider — format=%s is_carousel=%s topic=%r",
+        decision.format, decision.is_carousel, topic.get("title", "")[:80],
+    )
+    return decision

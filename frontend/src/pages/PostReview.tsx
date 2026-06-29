@@ -7,8 +7,44 @@ import { mediaUrl } from '../lib/supabase'
 import type { Post } from '../types'
 import TapTracker from '../components/TapTracker'
 import TopicPill from '../components/TopicPill'
+import Modal from '../components/Modal'
+import Button from '../components/Button'
 
 const GENERATING = new Set(['topic_chosen', 'generating', 'content_ready'])
+
+// Section-header emojis used by _FINALIZE_SYSTEM in reel_scripter.py
+const MAJOR_HEADER_RE = /^[🎯📢📱🎵💡]/u
+const SCENE_HEADER_RE = /^🎬/u
+const CREATOR_CUE_RE  = /^[🎥😀📝🔊⏱]/u
+
+function ScriptDisplay({ script }: { script: string }) {
+  return (
+    <div className="space-y-[2px] text-[13px] leading-[1.75]">
+      {script.split('\n').map((line, i) => {
+        if (!line.trim()) return <div key={i} className="h-[10px]" />
+        if (SCENE_HEADER_RE.test(line))
+          return (
+            <p key={i} className="m-0 mt-5 first:mt-0 text-[11px] font-extrabold uppercase tracking-[.08em] text-accent">
+              {line}
+            </p>
+          )
+        if (MAJOR_HEADER_RE.test(line))
+          return (
+            <p key={i} className="m-0 mt-5 first:mt-0 text-[11px] font-extrabold uppercase tracking-[.08em] text-text">
+              {line}
+            </p>
+          )
+        if (CREATOR_CUE_RE.test(line))
+          return (
+            <p key={i} className="m-0 pl-3 text-[12px] text-muted">
+              {line}
+            </p>
+          )
+        return <p key={i} className="m-0 font-medium text-text">{line}</p>
+      })}
+    </div>
+  )
+}
 
 const GEN_STEPS = [
   { label: 'Writing caption & hashtags' },
@@ -28,6 +64,184 @@ function CriticScoreBadge({ score }: { score: number }) {
   )
 }
 
+// Carousel + full-screen lightbox for one or more generated images.
+// Keyboard arrows and touch swipe both navigate between slides.
+function ImageCarousel({
+  paths,
+  showRegenerate,
+  onRegenerate,
+  busy,
+}: {
+  paths: string[]
+  showRegenerate: boolean
+  onRegenerate: () => void
+  busy: boolean
+}) {
+  const [active, setActive] = useState(0)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const touchStartX = useRef(0)
+  const total = paths.length
+  const isMulti = total > 1
+
+  // Clamp index when image count drops after a regeneration
+  useEffect(() => {
+    setActive((i) => Math.min(i, paths.length - 1))
+  }, [paths.length])
+
+  // Arrow-key + Escape handling (active whenever multi-image or lightbox is open)
+  useEffect(() => {
+    if (!isMulti && !lightboxOpen) return
+    function handler(e: KeyboardEvent) {
+      if (e.key === 'ArrowLeft')  setActive((i) => (i - 1 + total) % total)
+      if (e.key === 'ArrowRight') setActive((i) => (i + 1) % total)
+      if (e.key === 'Escape')     setLightboxOpen(false)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [isMulti, lightboxOpen, total])
+
+  const activeSrc = mediaUrl(paths[Math.min(active, total - 1)])
+
+  return (
+    <>
+      {/* ── Carousel strip ──────────────────────────────── */}
+      <div
+        className="relative aspect-[4/5] bg-black overflow-hidden"
+        onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX }}
+        onTouchEnd={(e) => {
+          const delta = touchStartX.current - e.changedTouches[0].clientX
+          if (delta > 40)       setActive((i) => (i + 1) % total)
+          else if (delta < -40) setActive((i) => (i - 1 + total) % total)
+        }}
+      >
+        {/* Active image — click opens lightbox */}
+        <img
+          src={activeSrc}
+          alt={isMulti ? `Image ${active + 1} of ${total}` : 'Generated image'}
+          onClick={() => setLightboxOpen(true)}
+          className="absolute inset-0 w-full h-full object-contain cursor-pointer"
+        />
+
+        {/* Prev arrow */}
+        {isMulti && (
+          <button
+            onClick={() => setActive((i) => (i - 1 + total) % total)}
+            aria-label="Previous image"
+            className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center text-white font-bold text-lg leading-none hover:bg-black/65 transition-colors border-0 cursor-pointer select-none"
+          >
+            ‹
+          </button>
+        )}
+
+        {/* Next arrow */}
+        {isMulti && (
+          <button
+            onClick={() => setActive((i) => (i + 1) % total)}
+            aria-label="Next image"
+            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center text-white font-bold text-lg leading-none hover:bg-black/65 transition-colors border-0 cursor-pointer select-none"
+          >
+            ›
+          </button>
+        )}
+
+        {/* Counter badge: 1 / 2 */}
+        {isMulti && (
+          <span className="absolute top-3 right-3 z-10 text-[9.5px] font-bold text-white bg-black/50 backdrop-blur-sm px-2 py-[5px] rounded-[6px] select-none">
+            {active + 1} / {total}
+          </span>
+        )}
+
+        {/* Dot indicators (pill on active) */}
+        {isMulti && (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-[6px] z-10">
+            {paths.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setActive(i)}
+                aria-label={`Go to image ${i + 1}`}
+                className={[
+                  'h-[6px] rounded-full border-0 cursor-pointer p-0 transition-all',
+                  i === active ? 'bg-white w-[14px]' : 'bg-white/50 w-[6px]',
+                ].join(' ')}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Regenerate button */}
+        {showRegenerate && (
+          <button
+            onClick={onRegenerate}
+            disabled={busy}
+            className="absolute bottom-3 left-3 z-10 flex items-center gap-[6px] text-[11px] font-bold text-white bg-black/35 backdrop-blur-sm border border-white/28 px-[11px] py-2 rounded-[9px] cursor-pointer hover:bg-black/55 transition-colors disabled:opacity-50"
+          >
+            ↻ Regenerate image
+          </button>
+        )}
+      </div>
+
+      {/* ── Full-screen lightbox ─────────────────────────── */}
+      {lightboxOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/92 flex items-center justify-center"
+          onClick={() => setLightboxOpen(false)}
+          onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX }}
+          onTouchEnd={(e) => {
+            const delta = touchStartX.current - e.changedTouches[0].clientX
+            if (delta > 40)       setActive((i) => (i + 1) % total)
+            else if (delta < -40) setActive((i) => (i - 1 + total) % total)
+          }}
+        >
+          <img
+            src={activeSrc}
+            alt={isMulti ? `Image ${active + 1} of ${total}` : 'Generated image'}
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-[90vw] max-h-[88vh] object-contain rounded-[4px]"
+          />
+
+          {/* Close */}
+          <button
+            onClick={() => setLightboxOpen(false)}
+            aria-label="Close preview"
+            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/15 flex items-center justify-center text-white text-[15px] leading-none hover:bg-white/30 transition-colors border-0 cursor-pointer"
+          >
+            ✕
+          </button>
+
+          {/* Counter */}
+          {isMulti && (
+            <span className="absolute top-4 left-1/2 -translate-x-1/2 text-[12px] font-bold text-white/80 select-none">
+              {active + 1} / {total}
+            </span>
+          )}
+
+          {/* Prev */}
+          {isMulti && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setActive((i) => (i - 1 + total) % total) }}
+              aria-label="Previous image"
+              className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/15 flex items-center justify-center text-white font-bold text-xl leading-none hover:bg-white/30 transition-colors border-0 cursor-pointer"
+            >
+              ‹
+            </button>
+          )}
+
+          {/* Next */}
+          {isMulti && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setActive((i) => (i + 1) % total) }}
+              aria-label="Next image"
+              className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/15 flex items-center justify-center text-white font-bold text-xl leading-none hover:bg-white/30 transition-colors border-0 cursor-pointer"
+            >
+              ›
+            </button>
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
 export default function PostReview() {
   const params = useParams()
   const postId = params?.postId as string | undefined
@@ -41,6 +255,12 @@ export default function PostReview() {
   const savedPollCount = useRef(0)
   const retryPending = useRef(false)
   const [retrying, setRetrying] = useState(false)
+  // ── Reel script review state ─────────────────────────────────────────
+  const [editMode, setEditMode] = useState(false)
+  const [scriptEdit, setScriptEdit] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [showRegenConfirm, setShowRegenConfirm] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -334,18 +554,246 @@ export default function PostReview() {
     )
   }
 
-  // ── Reel script ──────────────────────────────────────────
+  // ── Reel script review ───────────────────────────────────
   if (isReel) {
+    const regenInProgress = generating && !!post.script
+    const scriptMissing   = generating && !post.script
+
+    async function saveEdit() {
+      setSavingEdit(true)
+      setError('')
+      try {
+        await api.patch<Post>(`/posts/${post!.id}`, { script: scriptEdit })
+        setEditMode(false)
+        await load()
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : 'Save failed')
+      } finally {
+        setSavingEdit(false)
+      }
+    }
+
+    async function regenerateScript() {
+      if (busy) return
+      setShowRegenConfirm(false)
+      setBusy(true)
+      setError('')
+      try {
+        await api.post(`/posts/${post!.id}/tweak`, {
+          instruction:
+            'Regenerate the reel script with a completely fresh angle — new hook, ' +
+            'new examples, new story flow. Same topic and creator format.',
+        })
+        await load()
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : 'Regenerate failed')
+      } finally {
+        setBusy(false)
+      }
+    }
+
+    function copyScript() {
+      if (!post.script) return
+      navigator.clipboard.writeText(post.script).then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      })
+    }
+
+    function downloadScript() {
+      if (!post.script) return
+      const slug = (post.topics?.title ?? post.id.slice(0, 8))
+        .toLowerCase().replace(/\s+/g, '-').slice(0, 40)
+      const blob = new Blob([post.script], { type: 'text/plain' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href = url
+      a.download = `reel-${slug}.txt`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    }
+
+    const genTime = post.created_at
+      ? new Date(post.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+      : null
+
     return (
       <div>
         <TapTracker step={2} />
-        <p className="text-[11px] font-bold uppercase tracking-[.14em] text-orange-600 m-0 mb-[6px]">Tap 2 of 2 · reel</p>
-        <h1 className="text-[22px] font-extrabold text-text leading-tight tracking-tight m-0 mb-3">Reel script</h1>
-        {error && <p className="text-bad text-[0.88rem] mb-3">{error}</p>}
-        <div className="bg-[#f3f7fb] border border-[#dde7f1] rounded-[14px] p-[13px]">
-          <p className="text-[10.5px] font-bold uppercase tracking-[.1em] text-accent-700 m-0 mb-2">🎬 Script · 1 min — for manual shoot</p>
-          <p className="text-[13px] font-medium text-text whitespace-pre-wrap leading-[1.7] m-0">{post.script}</p>
+        <p className="text-[11px] font-bold uppercase tracking-[.14em] text-orange-600 m-0 mb-[6px]">
+          Tap 2 of 2 · reel
+        </p>
+        <h1 className="text-[22px] font-extrabold text-text leading-tight tracking-tight m-0 mb-3">
+          Reel Script
+        </h1>
+
+        {/* ── Status bar ── */}
+        <div className="flex items-center gap-[6px] mb-4 min-h-[18px]">
+          {generating ? (
+            <>
+              <span className="w-[7px] h-[7px] rounded-full bg-orange animate-pulse flex-shrink-0" />
+              <span className="text-[11.5px] font-semibold text-orange">
+                {regenInProgress ? 'Regenerating…' : 'Generating script…'}
+              </span>
+            </>
+          ) : post.status === 'awaiting_approval' ? (
+            <>
+              <span className="w-[7px] h-[7px] rounded-full bg-amber-400 flex-shrink-0" />
+              <span className="text-[11.5px] font-semibold text-amber-600">Ready for review</span>
+              {genTime && (
+                <span className="text-[11px] text-muted">· Generated {genTime}</span>
+              )}
+            </>
+          ) : post.status === 'saved' ? (
+            <>
+              <span className="w-[7px] h-[7px] rounded-full bg-good flex-shrink-0" />
+              <span className="text-[11.5px] font-semibold text-good">Approved</span>
+            </>
+          ) : null}
         </div>
+
+        {error && <p className="text-bad text-[0.88rem] mb-3 m-0">{error}</p>}
+
+        {/* ── Script card ── */}
+        <div className="bg-white border border-border rounded-[16px] overflow-hidden shadow-card mb-3">
+
+          {/* Card toolbar */}
+          <div className="flex items-center justify-between px-4 py-[10px] border-b border-border bg-[#f8f9fb]">
+            <span className="text-[10.5px] font-bold uppercase tracking-[.1em] text-accent">
+              🎬 Reel Script · 30–45s
+            </span>
+            <div className="flex items-center gap-[6px]">
+              {/* Copy */}
+              <button
+                onClick={copyScript}
+                disabled={!post.script || generating}
+                title="Copy script"
+                className="flex items-center gap-1 text-[11.5px] font-semibold text-muted px-[9px] py-[5px] rounded-[8px] bg-transparent border border-transparent hover:border-border hover:text-text transition-colors disabled:opacity-40 cursor-pointer"
+              >
+                {copied ? '✓ Copied' : '📋 Copy'}
+              </button>
+              {/* Download */}
+              <button
+                onClick={downloadScript}
+                disabled={!post.script || generating}
+                title="Download as .txt"
+                className="flex items-center gap-1 text-[11.5px] font-semibold text-muted px-[9px] py-[5px] rounded-[8px] bg-transparent border border-transparent hover:border-border hover:text-text transition-colors disabled:opacity-40 cursor-pointer"
+              >
+                📄 Download
+              </button>
+              {/* Edit / Save / Cancel */}
+              {editMode ? (
+                <div className="flex gap-[5px]">
+                  <button
+                    onClick={() => setEditMode(false)}
+                    className="text-[11.5px] font-semibold text-muted px-[9px] py-[5px] rounded-[8px] border border-border bg-white hover:border-border-strong transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveEdit}
+                    disabled={savingEdit}
+                    className="text-[11.5px] font-bold text-white bg-accent px-[9px] py-[5px] rounded-[8px] border-0 hover:bg-navy transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {savingEdit ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setScriptEdit(post.script ?? ''); setEditMode(true) }}
+                  disabled={generating || !post.script}
+                  title="Edit script"
+                  className="flex items-center gap-1 text-[11.5px] font-semibold text-muted px-[9px] py-[5px] rounded-[8px] bg-transparent border border-transparent hover:border-border hover:text-text transition-colors disabled:opacity-40 cursor-pointer"
+                >
+                  ✏️ Edit
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Script body */}
+          <div className="p-4">
+            {editMode ? (
+              <textarea
+                value={scriptEdit}
+                onChange={(e) => setScriptEdit(e.target.value)}
+                className="w-full min-h-[480px] text-[12.5px] font-mono text-text leading-[1.75] resize-y border-[1.5px] border-border rounded-[10px] p-3 outline-none focus:border-orange transition-colors"
+              />
+            ) : scriptMissing ? (
+              <div className="flex items-center gap-2 py-8 justify-center text-muted text-[13px]">
+                <span className="w-4 h-4 rounded-full border-2 border-muted border-t-transparent animate-spin flex-shrink-0" />
+                Generating script…
+              </div>
+            ) : (
+              <div className={regenInProgress ? 'relative' : ''}>
+                <ScriptDisplay script={post.script ?? ''} />
+                {regenInProgress && (
+                  <div className="absolute inset-0 bg-white/75 flex items-center justify-center rounded-[8px]">
+                    <div className="flex items-center gap-2 text-[13px] font-semibold text-muted">
+                      <span className="w-4 h-4 rounded-full border-2 border-orange border-t-transparent animate-spin flex-shrink-0" />
+                      Regenerating…
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Actions ── */}
+        {post.status === 'awaiting_approval' && !editMode && (
+          <div className="flex flex-col gap-[9px]">
+            <Button
+              onClick={() => act('approve')}
+              disabled={busy || !post.script}
+              className="w-full"
+            >
+              ✅ Approve Script
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setShowRegenConfirm(true)}
+              disabled={busy}
+              className="w-full"
+            >
+              🔄 Regenerate
+            </Button>
+            <button
+              onClick={() => act('reject')}
+              disabled={busy}
+              className="w-full bg-white border-[1.5px] border-border text-[#c2415c] rounded-[14px] py-[14px] text-[13.5px] font-bold cursor-pointer hover:border-[#c2415c] active:scale-[.98] transition-all disabled:opacity-50"
+            >
+              Not this one
+            </button>
+          </div>
+        )}
+
+        {/* ── Regenerate confirmation ── */}
+        {showRegenConfirm && (
+          <Modal
+            title="Regenerate script?"
+            actions={
+              <>
+                <button
+                  onClick={() => setShowRegenConfirm(false)}
+                  className="px-4 py-2 rounded-[10px] border border-border text-[13px] font-semibold text-muted bg-white cursor-pointer hover:border-border-strong transition-colors"
+                >
+                  Keep current
+                </button>
+                <Button onClick={regenerateScript} disabled={busy}>
+                  🔄 Regenerate
+                </Button>
+              </>
+            }
+          >
+            <p className="text-[13.5px] leading-relaxed m-0">
+              The current script will be replaced with a fresh version.
+              Your edits will be lost. This cannot be undone.
+            </p>
+          </Modal>
+        )}
       </div>
     )
   }
@@ -376,63 +824,44 @@ export default function PostReview() {
 
       {/* ── Image card ────────────────────────────────────── */}
       <div className="bg-white border border-border rounded-[16px] overflow-hidden shadow-card mb-3">
-        {/* Image header */}
-        <div className="relative h-[208px] bg-gradient-to-br from-[#2f4a7a] to-[#1a2b4a] flex flex-col justify-center px-6 overflow-hidden">
-          <div className="absolute right-[-40px] bottom-[-50px] w-[170px] h-[170px] rounded-full bg-gradient-radial from-orange/50 to-transparent opacity-50 pointer-events-none" />
-
-          {post.image_paths.length > 0 && !regeneratingImages ? (
-            <img
-              src={mediaUrl(post.image_paths[0])}
-              alt="generated"
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-          ) : (
-            <>
-              <span className="text-[11px] font-bold uppercase tracking-[.18em] text-orange mb-[10px] relative">
-                {post.topics?.pillars?.name ?? 'Content'}
-              </span>
-              <span className="text-[22px] font-extrabold text-white leading-tight relative tracking-tight">
-                {post.topics?.title ?? 'Your post'}
-              </span>
-            </>
-          )}
-
-          {regeneratingImages && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#1a2b4a]/80">
-              {post.status !== 'topic_chosen' && (
-                <div className="w-8 h-8 rounded-full border-4 border-white/30 border-t-white animate-spin mb-3" />
-              )}
-              <p className="text-white text-[12px] font-semibold">
-                {post.status === 'topic_chosen' ? 'Generation failed' : 'Regenerating image…'}
-              </p>
-              {post.status === 'topic_chosen' && (
-                <button
-                  onClick={() => act('retry')}
-                  disabled={busy}
-                  className="mt-3 px-4 py-1.5 rounded-full bg-white/20 text-white text-[11px] font-semibold hover:bg-white/30 disabled:opacity-50"
-                >
-                  ↻ Retry
-                </button>
-              )}
-            </div>
-          )}
-
-          {post.status === 'awaiting_approval' && (
-            <button
-              onClick={regenerateImages}
-              disabled={busy}
-              className="absolute bottom-3 left-3 flex items-center gap-[6px] text-[11px] font-bold text-white bg-black/35 backdrop-blur-sm border border-white/28 px-[11px] py-2 rounded-[9px] cursor-pointer hover:bg-black/55 transition-colors disabled:opacity-50"
-            >
-              ↻ Regenerate image
-            </button>
-          )}
-
-          {post.image_paths.length > 1 && (
-            <span className="absolute top-3 right-3 text-[9.5px] font-bold text-white bg-white/14 backdrop-blur-sm px-2 py-[5px] rounded-[6px]">
-              {post.image_paths.length} images
+        {post.image_paths.length > 0 && !regeneratingImages ? (
+          <ImageCarousel
+            paths={post.image_paths}
+            showRegenerate={post.status === 'awaiting_approval'}
+            onRegenerate={regenerateImages}
+            busy={busy}
+          />
+        ) : (
+          /* Placeholder shown while generating or before first image arrives */
+          <div className="relative aspect-[4/5] bg-gradient-to-br from-[#2f4a7a] to-[#1a2b4a] flex flex-col justify-center px-6 overflow-hidden">
+            <div className="absolute right-[-40px] bottom-[-50px] w-[170px] h-[170px] rounded-full bg-gradient-radial from-orange/50 to-transparent opacity-50 pointer-events-none" />
+            <span className="text-[11px] font-bold uppercase tracking-[.18em] text-orange mb-[10px] relative">
+              {post.topics?.pillars?.name ?? 'Content'}
             </span>
-          )}
-        </div>
+            <span className="text-[22px] font-extrabold text-white leading-tight relative tracking-tight">
+              {post.topics?.title ?? 'Your post'}
+            </span>
+            {regeneratingImages && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#1a2b4a]/80">
+                {post.status !== 'topic_chosen' && (
+                  <div className="w-8 h-8 rounded-full border-4 border-white/30 border-t-white animate-spin mb-3" />
+                )}
+                <p className="text-white text-[12px] font-semibold">
+                  {post.status === 'topic_chosen' ? 'Generation failed' : 'Regenerating image…'}
+                </p>
+                {post.status === 'topic_chosen' && (
+                  <button
+                    onClick={() => act('retry')}
+                    disabled={busy}
+                    className="mt-3 px-4 py-1.5 rounded-full bg-white/20 text-white text-[11px] font-semibold hover:bg-white/30 disabled:opacity-50"
+                  >
+                    ↻ Retry
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Card body */}
         <div className="px-4 pt-4 pb-[16px]">

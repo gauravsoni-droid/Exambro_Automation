@@ -1,5 +1,7 @@
 """Tap-2 endpoints — Post review screen."""
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -8,10 +10,13 @@ from app.db import get_db
 from app.pipeline import orchestrator
 from app.schemas import PostOut, TweakIn
 
+logger = logging.getLogger(__name__)
+
 
 class PostPatchIn(BaseModel):
     caption: str | None = None
     hashtags: list[str] | None = None
+    script: str | None = None
 
 router = APIRouter(prefix="/posts", tags=["posts"], dependencies=[Depends(require_owner)])
 
@@ -31,7 +36,14 @@ def current_post() -> PostOut | None:
         .execute()
         .data
     )
-    return PostOut(**rows[0]) if rows else None
+    if rows:
+        row = rows[0]
+        logger.info(
+            "[CAROUSEL-TRACE 6/6] /posts/current — is_carousel=%s image_paths_len=%d paths=%s",
+            row.get("is_carousel"), len(row.get("image_paths") or []), row.get("image_paths"),
+        )
+        return PostOut(**row)
+    return None
 
 
 @router.get("/{post_id}", response_model=PostOut)
@@ -62,6 +74,8 @@ def patch_post(post_id: str, body: PostPatchIn) -> PostOut:
         updates["caption"] = body.caption
     if body.hashtags is not None:
         updates["hashtags"] = body.hashtags
+    if body.script is not None:
+        updates["script"] = body.script
     if not updates:
         raise HTTPException(422, "Nothing to update")
     result = (

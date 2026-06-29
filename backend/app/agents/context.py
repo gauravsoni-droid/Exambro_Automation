@@ -106,6 +106,53 @@ def business_foundation_block(settings_row: dict[str, Any]) -> str:
     )
 
 
+# ── ExamBro visual identity ────────────────────────────────────────────────────
+# Source: /frontend/public/brand/logos/logo.svg  (primary colour reference)
+#   "Exam" letters → #F58545 (orange, primary)
+#   "Bro"  letters → #2B89CA (blue, secondary)
+#   Cross-checked against /brand/logos/logoIcon.svg — palette confirmed.
+#
+# Logo compositing happens in image_maker._overlay_logo() — NOT by the AI.
+# The AI must never draw, describe, or recreate the logo; it only keeps the
+# bottom-left safe zone clear so the overlay has a clean landing spot.
+
+_PALETTE: dict[str, str] = {
+    "orange": "#F58545",  # primary  — headlines, key numbers, CTA highlights
+    "blue":   "#2B89CA",  # secondary — backgrounds, structural panels, icon shapes
+    "white":  "#FFFFFF",  # neutral   — body text, card surfaces
+}
+
+# Safe-zone dimensions the AI must honour so the post-processing overlay has room.
+# Mirrored by the programmatic constants in image_maker._overlay_logo().
+_LOGO_SAFE_ZONE = "left ≤12 % of image width × bottom ≤12 % of image height"
+
+
+def brand_visuals_block() -> str:
+    """Structured visual identity block injected into the Image Maker's planning LLM.
+
+    The logo is composited programmatically after generation — the AI must not
+    attempt to draw it. Only palette and safe-zone rules are passed here.
+    """
+    return "\n".join([
+        "EXAMBRO VISUAL BRAND IDENTITY",
+        "",
+        "COLOUR PALETTE (stay within this palette — do not introduce clashing colours):",
+        f"  Primary   ExamBro Orange {_PALETTE['orange']} — headlines, key numbers, CTA highlights, accents",
+        f"  Secondary ExamBro Blue   {_PALETTE['blue']} — backgrounds, structural panels, icon shapes",
+        f"  Neutral   White          {_PALETTE['white']} — body text, card surfaces",
+        "  Rule: orange leads as the dominant accent; blue grounds the composition.",
+        "",
+        "LOGO — CRITICAL RULE:",
+        "  DO NOT draw, describe, or recreate the ExamBro logo in your prompt.",
+        "  The official logo is composited onto every image after generation.",
+        f"  SAFE ZONE: keep {_LOGO_SAFE_ZONE} completely clear of",
+        "  text, subjects, and key graphics so the overlay has a clean landing spot.",
+    ])
+
+
+# ── ──────────────────────────────────────────────────────────────────────────
+
+
 def liked_topics_block(settings_row: dict[str, Any]) -> str:
     """Light topic-preference signal — Topic Decider only.
 
@@ -119,8 +166,7 @@ def liked_topics_block(settings_row: dict[str, Any]) -> str:
     if not liked:
         return ""
     return (
-        "TOPIC PREFERENCES (light signal — increase likelihood of these topics, "
-        "but NEVER override Owner Ideas, Breaking News, or Pillar Rotation):\n"
+        "TOPIC PREFERENCES (preference signal only — does not override rotation):\n"
         f"- Lean towards: {liked}"
     )
 
@@ -144,11 +190,7 @@ def never_post_topics_block(settings_row: dict[str, Any]) -> str:
     if not never:
         return ""
     rules = "\n".join(f"- {n}" for n in never)
-    return (
-        "NEVER POST — do not suggest any topic that would require generating content "
-        "that violates these rules. If a topic naturally leads to forbidden content, "
-        "choose a different angle:\n" + rules
-    )
+    return "NEVER POST (topic filter — skip topics that lead to forbidden content):\n" + rules
 
 
 def target_audience_block(settings_row: dict[str, Any]) -> str:
@@ -273,10 +315,6 @@ def adaptive_strategy_block(ctx: AdaptiveContext) -> str:
         for p in prefer:
             lines.append(f"  - {p}")
 
-    lines.append(
-        "PREFERENCE ONLY — pillar rotation still applies; you cannot reuse yesterday's pillar."
-    )
-
     return "\n".join(lines)
 
 
@@ -302,30 +340,22 @@ def performance_block(digest: PerformanceDigest) -> str:
     if not has_signal:
         return ""
 
-    lines = [
-        "PERFORMANCE SIGNAL (owner feedback patterns — preference only, never overrides "
-        "pillar rotation / owner ideas / breaking news / never-post rules):"
-    ]
+    lines = ["PERFORMANCE SIGNAL (preference only — does not override rotation or rules):"]
 
     if digest.strong_pillars:
         lines.append(
-            "Strong pillars — owner consistently picks from these "
-            "(lean into them when choosing topics for slots 2–3): "
+            "Strong pillars (lean into for slots 2–3): "
             + ", ".join(digest.strong_pillars)
         )
 
     if digest.weak_pillars:
         lines.append(
-            "Weak pillars — owner rarely picks from these "
-            "(consider fresh angles or lighter coverage): "
+            "Weak pillars (try fresh angles or lighter coverage): "
             + ", ".join(digest.weak_pillars)
         )
 
     if digest.high_performing_topics:
-        lines.append(
-            "Recently well-received topics "
-            "(do NOT repeat these, but their themes resonated — use as style reference):"
-        )
+        lines.append("Top topics (style reference — do not repeat):")
         for t in digest.high_performing_topics:
             lines.append(f"  - {t}")
 
@@ -364,32 +394,23 @@ def competitor_trends_block(digest: CompetitorDigest) -> str:
     ]
 
     if digest.content_gaps:
-        lines.append(
-            "Content gaps — topics competitors are missing that ExamBro can own "
-            "(PREFER THESE when choosing topics for slots 2 and 3):"
-        )
+        lines.append("Content gaps — ExamBro can own these (prefer for slots 2–3):")
         for gap in digest.content_gaps:
             lines.append(f"  - {gap}")
 
     if digest.trending_themes:
         lines.append(
-            "Trending themes — competitors are covering these "
-            "(match only if it fits your pillar rotation and adds genuine value):"
+            "Trending (match only if it fits rotation and adds genuine value):"
         )
         for t in digest.trending_themes:
             suffix = f" ({t.handle_count} accounts)" if t.handle_count > 1 else ""
             lines.append(f"  - {t.theme}{suffix}")
 
     if digest.overused_topics:
-        lines.append(
-            "Oversaturated topics — competitors have flooded these this week, avoid them:"
-        )
+        lines.append("Oversaturated (avoid):")
         for o in digest.overused_topics:
             lines.append(f"  - {o}")
 
-    lines.append(
-        "\nRULE: content gaps > trending themes > no competitor signal. "
-        "Slot 1 is reserved for Owner Ideas / urgent news — competitor data shapes slots 2–3."
-    )
+    lines.append("Priority: gaps > trending > no signal. Competitor data shapes slots 2–3 only.")
 
     return "\n".join(lines)

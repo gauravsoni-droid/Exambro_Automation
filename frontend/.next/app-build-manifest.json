@@ -11,20 +11,25 @@
       "static/chunks/main-app.js",
       "static/chunks/app/not-found.js"
     ],
+    "/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/page.js"
+    ],
+    "/today/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/today/page.js"
+    ],
     "/settings/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/settings/page.js"
     ],
-    "/calibration/page": [
+    "/ideas/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/calibration/page.js"
-    ],
-    "/insights/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/insights/page.js"
+      "static/chunks/app/ideas/page.js"
     ],
     "/queue/page": [
       "static/chunks/webpack.js",
@@ -36,15 +41,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/review/[postId]/page.js"
     ],
-    "/ideas/page": [
+    "/insights/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/ideas/page.js"
+      "static/chunks/app/insights/page.js"
     ],
-    "/today/page": [
+    "/review/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/today/page.js"
+      "static/chunks/app/review/page.js"
     ]
   }
 }

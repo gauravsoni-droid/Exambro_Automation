@@ -67,7 +67,9 @@ async def fetch_competitor_trends(
 
     Skips silently when no competitor handles are configured in Settings.
     """
-    handles: list[str] = settings_row.get("competitor_handles") or []
+    handles: list[str] = [
+        h.strip() for h in (settings_row.get("competitor_handles") or []) if h.strip()
+    ]
     if not handles:
         return CompetitorDigest()
 

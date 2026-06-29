@@ -152,12 +152,24 @@ async def run_topic_round(
         raise RuntimeError("Need at least 3 active pillars for a topic round")
 
     idea = _pending_idea()
-    news, comp_digest, perf_digest, adaptive_ctx = await asyncio.gather(
-        news_search.fetch_exam_news(now),
-        competitor_fetcher.fetch_competitor_trends(settings_row, now),
-        performance_fetcher.fetch_performance_signal(settings_row, now),
-        exam_calendar_fetcher.fetch_adaptive_context(settings_row, now),
+    _has_competitors = any(
+        h.strip() for h in (settings_row.get("competitor_handles") or [])
     )
+    if _has_competitors:
+        news, comp_digest, perf_digest, adaptive_ctx = await asyncio.gather(
+            news_search.fetch_exam_news(now),
+            competitor_fetcher.fetch_competitor_trends(settings_row, now),
+            performance_fetcher.fetch_performance_signal(settings_row, now),
+            exam_calendar_fetcher.fetch_adaptive_context(settings_row, now),
+        )
+    else:
+        logger.info("No competitors configured, skipping competitor analysis.")
+        comp_digest = None
+        news, perf_digest, adaptive_ctx = await asyncio.gather(
+            news_search.fetch_exam_news(now),
+            performance_fetcher.fetch_performance_signal(settings_row, now),
+            exam_calendar_fetcher.fetch_adaptive_context(settings_row, now),
+        )
     round_ = await topic_decider.decide_topics(
         pillars=pillars,
         yesterdays_pillar_id=_yesterdays_picked_pillar(today),
@@ -317,11 +329,23 @@ async def run_generation(post_id: str, tweak_instruction: str | None = None) -> 
     db.table("posts").update({"status": PostStatus.generating.value}).eq("id", post_id).execute()
 
     try:
+        is_carousel_hint = False
         if post.get("format"):
             format_ = PostFormat(post["format"])
+            logger.info(
+                "[CAROUSEL-TRACE 2/6] run_generation — format pre-set=%s "
+                "format_decider skipped → is_carousel_hint=%s",
+                format_.value, is_carousel_hint,
+            )
         else:
             decision = await format_decider.decide_format(topic, now)
             format_ = PostFormat(decision.format)
+            is_carousel_hint = decision.is_carousel
+            logger.info(
+                "[CAROUSEL-TRACE 2/6] run_generation — format_decider ran "
+                "format=%s is_carousel_hint=%s",
+                format_.value, is_carousel_hint,
+            )
             db.table("posts").update({"format": format_.value}).eq("id", post_id).execute()
 
         # Writer ⇄ critic loop (≤3×). A tweak resumes from the owner's instruction.
@@ -370,8 +394,17 @@ async def run_generation(post_id: str, tweak_instruction: str | None = None) -> 
 
         # Image (post) or shoot-ready script (reel)
         if format_ == PostFormat.post:
-            plan = await image_maker.plan_images(topic, draft, now)
+            logger.info(
+                "[CAROUSEL-TRACE 2/6] run_generation — calling plan_images "
+                "with is_carousel=%s",
+                is_carousel_hint,
+            )
+            plan = await image_maker.plan_images(topic, draft, now, is_carousel=is_carousel_hint)
             image_paths = await image_maker.generate_and_store(post_id, plan)
+            logger.info(
+                "[CAROUSEL-TRACE 5/6] DB update — is_carousel=%s image_paths_len=%d paths=%s",
+                plan.is_carousel, len(image_paths), image_paths,
+            )
             db.table("posts").update(
                 {"image_paths": image_paths, "is_carousel": plan.is_carousel}
             ).eq("id", post_id).execute()

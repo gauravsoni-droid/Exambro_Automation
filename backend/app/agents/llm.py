@@ -22,6 +22,10 @@ _CODE_FENCE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.DOTALL)
 
 _MAX_JSON_ATTEMPTS = 3
 
+# Providers that support response_format={"type":"json_object"} via the OpenAI SDK.
+# Anthropic uses a different API; Google uses response_mime_type — neither is set here.
+_JSON_MODE_PROVIDERS: frozenset[str] = frozenset({"kimi", "openai"})
+
 
 async def complete(
     provider: Provider,
@@ -29,6 +33,7 @@ async def complete(
     system: str,
     user: str,
     max_tokens: int = 4096,
+    response_format: dict | None = None,
 ) -> str:
     s = get_settings()
 
@@ -55,6 +60,7 @@ async def complete(
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
+            **({"response_format": response_format} if response_format else {}),
         )
         return resp.choices[0].message.content or ""
 
@@ -72,7 +78,14 @@ async def complete(
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
+            extra_body={"thinking": {"type": "disabled"}},
+            **({"response_format": response_format} if response_format else {}),
         )
+
+        if response_format:
+            logger.debug(
+                "Kimi JSON mode active — thinking=disabled response_format=%s", response_format
+            )
 
         # ── Diagnostic logging for empty-response investigation ──────────────
         num_choices = len(resp.choices) if resp.choices else 0
@@ -213,11 +226,15 @@ async def complete_json[T: BaseModel](
         f"{json.dumps(schema.model_json_schema(), ensure_ascii=False)}"
     )
 
+    # JSON mode hard-enforces no prose preamble on providers that support it,
+    # preventing finish_reason=length from verbose intros eating into the budget.
+    _rf = {"type": "json_object"} if provider in _JSON_MODE_PROVIDERS else None
+
     last_error: Exception = RuntimeError("No attempts made")
     current_user = user
 
     for attempt in range(1, _MAX_JSON_ATTEMPTS + 1):
-        raw = await complete(provider, model, json_system, current_user, max_tokens)
+        raw = await complete(provider, model, json_system, current_user, max_tokens, _rf)
 
         # ── Empty response ───────────────────────────────────────────────────
         if not raw.strip():

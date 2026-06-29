@@ -175,7 +175,6 @@ async def decide_topics(
         "Suggest exactly 3 Instagram post topics for today.\n\n"
         "RULES:\n"
         "- The 3 topics MUST come from 3 DIFFERENT pillars (use pillar ids from the list).\n"
-        "- Only use pillars from the allowed list below.\n"
         "- Each topic: short title + one-line description. Concrete and postable today, "
         "not generic.\n"
         "- If a news item is truly urgent, you may base a topic on it even if rotation "

@@ -465,7 +465,7 @@ export default function Today() {
           Pick today's topic
         </h1>
         <p className="text-[13px] font-medium text-muted m-0 mb-5 leading-[1.5]">
-          No topics yet for today. The next round runs at 09:00 IST, or generate now.
+          Topics are generated automatically at 09:00 IST. Use the button below if today's run didn't complete.
         </p>
 
         {error  && <p className="text-bad text-[0.88rem] mb-3">{error}</p>}
@@ -484,7 +484,7 @@ export default function Today() {
           {generating ? (
             <><span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> Generating…</>
           ) : (
-            <>✦ Generate today's topics</>
+            <>↻ Regenerate Topics</>
           )}
         </button>
       </div>
