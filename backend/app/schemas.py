@@ -185,6 +185,7 @@ class AdaptiveContext(BaseModel):
     nearest_exam_name: str | None = None
     days_to_exam: int | None = None    # set when a future exam is the reference point
     days_since_exam: int | None = None  # set when a past exam is the reference point
+    current_focus: str | None = None   # UI-ready string e.g. "JEE • NEET Results"
 
 
 # ── API DTOs ────────────────────────────────────────────────────────────────

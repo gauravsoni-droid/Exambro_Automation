@@ -2,11 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { api, ApiError } from '../lib/api'
-import type { Idea, Pillar, Topic, TopicDecisionTrace } from '../types'
+import type { Idea, Pillar, Post, Topic, TopicDecisionTrace } from '../types'
 import TapTracker from '../components/TapTracker'
 import TopicPill from '../components/TopicPill'
 import SegControl from '../components/SegControl'
+
+// Statuses where a post is actively being worked on and the user needs /review.
+// Mirrors IN_FLIGHT in backend/app/api/posts.py.
+const IN_FLIGHT_STATUSES = new Set<string>([
+  'topic_chosen', 'generating', 'content_ready', 'awaiting_approval',
+])
 
 const FORMAT_OPTIONS = [
   { label: 'Post',   value: 'post' },
@@ -184,6 +191,7 @@ export default function Today() {
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [selectedFormat, setSelectedFormat] = useState('auto')
+  const [activePost, setActivePost] = useState<Post | null>(null)
   const [traceModal, setTraceModal] = useState<Topic | null>(null)
   const router = useRouter()
 
@@ -211,7 +219,12 @@ export default function Today() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      setTopics(await api.get<Topic[]>('/topics/today'))
+      const [fetchedTopics, currentPost] = await Promise.all([
+        api.get<Topic[]>('/topics/today'),
+        api.get<Post | null>('/posts/current').catch(() => null),
+      ])
+      setTopics(fetchedTopics)
+      setActivePost(currentPost)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Failed to load topics')
     } finally {
@@ -454,6 +467,40 @@ export default function Today() {
 
   // ── No topics: empty state ────────────────────────────────
   if (topics.length === 0) {
+    // A post was already picked and is actively in-flight.
+    // Guide the user back to /review rather than showing a misleading empty state.
+    if (activePost && IN_FLIGHT_STATUSES.has(activePost.status)) {
+      const isReady = activePost.status === 'awaiting_approval'
+      return (
+        <div>
+          <TapTracker step={2} />
+          <p className="text-[11px] font-bold uppercase tracking-[.14em] text-orange-600 m-0 mb-[6px]">
+            Tap 2 of 2 · {isReady ? 'almost done' : 'generating'}
+          </p>
+          <h1 className="text-[22px] font-extrabold text-text leading-[1.18] tracking-tight m-0 mb-1">
+            {isReady ? 'Your post is ready' : 'Your post is being built…'}
+          </h1>
+          <p className="text-[13px] font-medium text-muted m-0 mb-5 leading-[1.5]">
+            {isReady
+              ? 'Review, approve or tweak before saving.'
+              : 'Generation started — it\'ll be ready in about 20–40 seconds.'}
+          </p>
+          {activePost.topics?.title && (
+            <div className="bg-white border border-border rounded-[14px] px-4 py-[12px] shadow-card-sm mb-5">
+              <p className="text-[10px] font-bold uppercase tracking-[.08em] text-muted m-0 mb-[6px]">Topic</p>
+              <p className="text-[14px] font-bold text-text m-0 leading-snug">{activePost.topics.title}</p>
+            </div>
+          )}
+          <Link
+            href="/review"
+            className="block w-full text-center bg-gradient-to-br from-orange to-orange-600 text-white rounded-[14px] py-[16px] text-[15px] font-bold shadow-[0_8px_20px_rgba(245,134,69,.36)] hover:brightness-105 transition-all no-underline"
+          >
+            {isReady ? '→ Review & approve' : '→ Check generation progress'}
+          </Link>
+        </div>
+      )
+    }
+
     return (
       <div>
         <TapTracker step={1} />

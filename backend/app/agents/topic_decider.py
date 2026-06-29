@@ -26,6 +26,29 @@ from app.schemas import (
 
 logger = logging.getLogger(__name__)
 
+_SUPPORTED_EXAMS = ("JEE", "NEET", "CUET", "GUJCET")
+
+_EXAM_KEYWORDS: dict[str, list[str]] = {
+    "JEE":    ["jee", "iit"],
+    "NEET":   ["neet", "mbbs", "aiims"],
+    "CUET":   ["cuet"],
+    "GUJCET": ["gujcet"],
+}
+
+
+def detect_exam(title: str, description: str | None = None) -> str | None:
+    """Return the exam name detected from topic text via keyword matching, or None.
+
+    Order in _EXAM_KEYWORDS is the tie-break when multiple exams appear in one topic
+    (rare; the first match wins).
+    """
+    text = f"{title} {description or ''}".lower()
+    for exam, keywords in _EXAM_KEYWORDS.items():
+        if any(kw in text for kw in keywords):
+            return exam
+    return None
+
+
 _STOPWORDS = frozenset({
     "a", "an", "the", "is", "are", "was", "be", "been",
     "to", "for", "in", "on", "of", "and", "or", "but",
@@ -34,6 +57,121 @@ _STOPWORDS = frozenset({
     "get", "how", "what", "when", "who", "why", "tell",
     "write", "about", "some", "all", "than", "students",
 })
+
+# Signal 1: normalized Jaccard on title alone (high-precision gate).
+# 0.7 catches word-for-word rephrasing while allowing same-exam topics with different angles
+# ("NEET Prep Tips" vs "JEE Prep Tips" scores 0.67, just under the bar).
+_TITLE_THRESHOLD = 0.7
+
+# Signal 2: overlap coefficient on combined (title + description) normalized text.
+# Uses |A∩B| / min(|A|,|B|) — measures "how much of the smaller topic is contained in the larger
+# one", which is more sensitive to short titles buried in longer descriptions.
+# Only fires when title_sim ≥ _TITLE_GUARD so fully unrelated descriptions don't trigger it.
+_COMBINED_THRESHOLD = 0.55
+_TITLE_GUARD = 0.3
+
+# Domain synonym map — collapses the most common exam-prep vocabulary variants so that
+# "strategy/tricks/guide" all normalize to "tips", "analysis/analyzing" → "review", etc.
+# Kept conservative: only unambiguous, high-frequency synonyms to avoid false positives.
+_SYNONYMS: dict[str, str] = {
+    "preparation": "prep",
+    "prepare": "prep",
+    "preparing": "prep",
+    "strategy": "tips",
+    "strategies": "tips",
+    "trick": "tips",
+    "tricks": "tips",
+    "analysis": "review",
+    "analyzing": "review",
+    "results": "result",
+    "cutoffs": "cutoff",
+    "registration": "register",
+    "deadline": "date",
+    "dates": "date",
+    "schedule": "date",
+}
+
+
+def _sig_tokens(text: str) -> set[str]:
+    """Significant word tokens — non-digit Unicode letters > 2 chars, stopwords removed."""
+    return {
+        w for w in re.findall(r"[^\W\d_]+", text.lower(), re.UNICODE)
+        if len(w) > 2 and w not in _STOPWORDS
+    }
+
+
+def _normalized_tokens(text: str) -> set[str]:
+    """Like _sig_tokens but with synonym normalization applied."""
+    return {_SYNONYMS.get(w, w) for w in _sig_tokens(text)}
+
+
+def _combined_fingerprint(title: str, description: str | None) -> set[str]:
+    """Normalized token set for title + description together."""
+    return _normalized_tokens(f"{title} {description or ''}")
+
+
+def _validate_no_duplicates(round_: TopicRound, prior_topics: list[dict]) -> None:
+    """Raise ValueError if any proposed topic is semantically too close to a recent one.
+
+    Two signals are computed for every (new topic, prior topic) pair:
+
+    Signal 1 — Normalized title Jaccard (≥ 0.7):
+        Fires when titles share the majority of significant tokens after synonym normalization.
+        Catches direct rephrasing: "JEE Main Registration Tips" ≈ "JEE Main Registration Guide"
+        (both normalize to {jee, main, register, tips} → Jaccard 1.0).
+
+    Signal 2 — Combined overlap coefficient (≥ 0.55, guarded by title_sim ≥ 0.3):
+        Uses |A∩B| / min(|A|,|B|) on the full title+description token set.
+        Catches cases where titles look different but descriptions reveal the same core idea:
+        "NEET Biology Strategy" / "Master NEET biology … high-weightage chapters"
+        ≈ "NEET Biology Tips" / "Best tips for NEET biology … important chapters"
+        → combined overlap 0.60 → caught even though title Jaccard is only 0.33.
+    """
+    for t in round_.topics:
+        new_title_tok = _normalized_tokens(t.title)
+        new_combined = _combined_fingerprint(t.title, t.description)
+
+        for prior in prior_topics:
+            prior_title: str = prior["title"]
+            prior_desc: str | None = prior.get("description")
+            prior_title_tok = _normalized_tokens(prior_title)
+            prior_combined = _combined_fingerprint(prior_title, prior_desc)
+
+            title_inter = new_title_tok & prior_title_tok
+            title_union = new_title_tok | prior_title_tok
+            title_sim = len(title_inter) / max(len(title_union), 1)
+
+            # Signal 1
+            if title_sim >= _TITLE_THRESHOLD:
+                logger.info(
+                    "Duplicate [title] '%s' ~ '%s' title_sim=%.0f%% shared=%s",
+                    t.title, prior_title, title_sim * 100, sorted(title_inter),
+                )
+                raise ValueError(
+                    f"Topic '{t.title}' duplicates recent topic '{prior_title}' "
+                    f"(title similarity {title_sim:.0%}, "
+                    f"shared: {', '.join(sorted(title_inter))}) "
+                    "— suggest a genuinely different angle"
+                )
+
+            # Signal 2 — only when topics are in the same ballpark
+            if title_sim >= _TITLE_GUARD and new_combined and prior_combined:
+                common = new_combined & prior_combined
+                combined_sim = len(common) / min(len(new_combined), len(prior_combined))
+                if combined_sim >= _COMBINED_THRESHOLD:
+                    logger.info(
+                        "Duplicate [combined] '%s' ~ '%s' "
+                        "combined_sim=%.0f%% title_sim=%.0f%% shared=%s",
+                        t.title, prior_title, combined_sim * 100,
+                        title_sim * 100, sorted(common),
+                    )
+                    raise ValueError(
+                        f"Topic '{t.title}' covers the same idea as recent topic "
+                        f"'{prior_title}' "
+                        f"(combined overlap {combined_sim:.0%}, "
+                        f"shared concepts: {', '.join(sorted(common))}) "
+                        "— suggest a genuinely different angle"
+                    )
 
 
 def idea_matches(payload: str, topic: TopicSuggestion) -> bool:
@@ -72,11 +210,30 @@ def idea_matches(payload: str, topic: TopicSuggestion) -> bool:
     return False
 
 
+def _validate_exam_variety(round_: TopicRound) -> None:
+    """Raise ValueError when all 3 topics target the same exam without breaking news.
+
+    Only fires when every topic has a detectable exam AND they all match the same one.
+    Topics with no detectable exam keyword are ignored (they're generic/multi-exam).
+    Breaking news (is_rotation_exception=True) on any topic exempts the whole round.
+    """
+    if any(t.is_rotation_exception for t in round_.topics):
+        return
+    exams = [detect_exam(t.title, t.description) for t in round_.topics]
+    detected = [e for e in exams if e is not None]
+    if len(detected) == len(round_.topics) and len(set(detected)) == 1:
+        raise ValueError(
+            f"All 3 topics target {detected[0]} — spread across "
+            "JEE / NEET / CUET / GUJCET in slots 2–3 or mark breaking news"
+        )
+
+
 def _validate_round(
     round_: TopicRound,
     allowed_pillar_ids: set[str],
     all_pillar_ids: set[str],
     idea: dict[str, Any] | None,
+    prior_topics: list[dict] | None = None,
 ) -> None:
     slot1 = round_.topics[0]
     pillar_ids = [t.pillar_id for t in round_.topics]
@@ -108,6 +265,13 @@ def _validate_round(
                 f"Topic '{t.title}' used excluded/unknown pillar: {t.pillar_id}"
             )
 
+    # 4. Exam variety: don't cluster all 3 topics on the same exam
+    _validate_exam_variety(round_)
+
+    # 5. No duplicates of recent/historical topics
+    if prior_topics:
+        _validate_no_duplicates(round_, prior_topics)
+
 
 async def decide_topics(
     pillars: list[dict[str, Any]],
@@ -120,6 +284,7 @@ async def decide_topics(
     competitor_digest: CompetitorDigest | None = None,
     performance_digest: PerformanceDigest | None = None,
     adaptive_context: AdaptiveContext | None = None,
+    prior_topics: list[dict] | None = None,
 ) -> TopicRound:
     s = get_settings()
     all_ids = {p["id"] for p in pillars}
@@ -153,6 +318,19 @@ async def decide_topics(
             "angles:\n" + "\n".join(f"- {t}" for t in rejected_titles)
         )
 
+    prior_block = ""
+    if prior_topics:
+        lines = []
+        for p in prior_topics:
+            line = f"- {p['title']}"
+            if p.get("description"):
+                line += f": {p['description']}"
+            lines.append(line)
+        prior_block = (
+            "\nRECENT TOPICS (last 30 days — do not repeat or closely rephrase "
+            "even if the wording differs):\n" + "\n".join(lines)
+        )
+
     liked_block = context.liked_topics_block(settings_row)
     never_topics = context.never_post_topics_block(settings_row)
     adaptive_block = (
@@ -180,6 +358,8 @@ async def decide_topics(
         "- If a news item is truly urgent, you may base a topic on it even if rotation "
         "suffers — set is_rotation_exception=true on that topic and cite the URL in "
         "source_refs.\n"
+        "- Spread exams across topics: if slot 1 targets JEE, prefer NEET / CUET / GUJCET "
+        "for slots 2-3. Only cluster all 3 on one exam when urgent breaking news justifies it.\n"
         f"\nALLOWED PILLARS (yesterday's pillar already excluded):\n{pillar_lines}\n"
         f"\n{context.business_foundation_block(settings_row)}\n"
         f"{context.target_audience_block(settings_row)}\n"
@@ -187,6 +367,7 @@ async def decide_topics(
         + (f"\n{adaptive_block}\n" if adaptive_block else "")
         + (f"\n{perf_block}\n" if perf_block else "")
         + (f"\n{comp_block}\n" if comp_block else "")
+        + (f"\n{prior_block}\n" if prior_block else "")
         + f"\nTODAY'S EXAM NEWS:\n{news_block}"
         + f"{idea_block}{rejected_block}"
     )
@@ -199,7 +380,7 @@ async def decide_topics(
         TopicRound,
     )
     try:
-        _validate_round(round_, allowed_ids, all_ids, pending_idea)
+        _validate_round(round_, allowed_ids, all_ids, pending_idea, prior_topics)
     except ValueError as exc:
         logger.warning("Topic round invalid (%s) — one retry", exc)
         round_ = await llm.complete_json(
@@ -209,7 +390,7 @@ async def decide_topics(
             f"Generate today's 3 topic suggestions. Previous attempt was invalid: {exc}",
             TopicRound,
         )
-        _validate_round(round_, allowed_ids, all_ids, pending_idea)
+        _validate_round(round_, allowed_ids, all_ids, pending_idea, prior_topics)
     return round_
 
 

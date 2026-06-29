@@ -2,6 +2,7 @@
   "/today/page": "app/today/page.js",
   "/queue/page": "app/queue/page.js",
   "/review/[postId]/page": "app/review/[postId]/page.js",
-  "/insights/page": "app/insights/page.js",
-  "/review/page": "app/review/page.js"
+  "/review/page": "app/review/page.js",
+  "/settings/page": "app/settings/page.js",
+  "/insights/page": "app/insights/page.js"
 }

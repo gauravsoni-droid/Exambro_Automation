@@ -104,6 +104,28 @@ def _yesterdays_picked_pillar(today: date) -> str | None:
     return rows[0]["pillar_id"] if rows else None
 
 
+def _recent_topics(today: date, days: int = 30) -> list[dict]:
+    """Title + description for every topic in the last N days (all statuses).
+
+    Passed to the topic decider so its duplicate validator can compare both
+    the title and the description, not just the title alone.
+    """
+    since = (today - timedelta(days=days)).isoformat()
+    rows = (
+        get_db()
+        .table("topics")
+        .select("title,description")
+        .gte("round_date", since)
+        .execute()
+        .data
+    )
+    return [
+        {"title": r["title"], "description": r.get("description")}
+        for r in rows
+        if r.get("title")
+    ]
+
+
 def _pending_idea() -> dict[str, Any] | None:
     rows = (
         get_db()
@@ -152,6 +174,7 @@ async def run_topic_round(
         raise RuntimeError("Need at least 3 active pillars for a topic round")
 
     idea = _pending_idea()
+    prior_topics = _recent_topics(today)
     _has_competitors = any(
         h.strip() for h in (settings_row.get("competitor_handles") or [])
     )
@@ -181,6 +204,7 @@ async def run_topic_round(
         competitor_digest=comp_digest,
         performance_digest=perf_digest,
         adaptive_context=adaptive_ctx,
+        prior_topics=prior_topics,
     )
 
     traces = topic_decider.build_traces(

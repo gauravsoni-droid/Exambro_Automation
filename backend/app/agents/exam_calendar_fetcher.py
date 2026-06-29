@@ -89,6 +89,112 @@ def _seed_db(events: list[ExamEvent]) -> None:
         logger.debug("exam_calendar seed skipped (table may not exist yet): %s", exc)
 
 
+def _short_exam_name(raw: str) -> str:
+    """Normalise a raw exam name to a brief, UI-ready token."""
+    r = raw.lower()
+    if "jee advanced" in r:
+        return "JEE Advanced"
+    if "jee main" in r:
+        return "JEE Mains"
+    if "neet" in r:
+        return "NEET"
+    if "cuet" in r:
+        return "CUET"
+    if "gujcet" in r:
+        return "GUJCET"
+    return raw
+
+
+_PHASE_DISPLAY: dict[ExamPhase, str | None] = {
+    ExamPhase.exam_week:    "Exam Week",
+    ExamPhase.revision:     "Revision",
+    ExamPhase.preparation:  "Prep",
+    ExamPhase.registration: "Registration",
+    ExamPhase.results:      "Results",
+    ExamPhase.counselling:  "Counselling",
+    ExamPhase.off_season:   None,
+}
+
+# Phases worth surfacing as a label in the UI (not just silent prep/registration)
+_PROMINENT_PHASES = {
+    ExamPhase.exam_week,
+    ExamPhase.revision,
+    ExamPhase.results,
+    ExamPhase.counselling,
+}
+
+
+def _build_current_focus(today: date, events: list[ExamEvent]) -> str | None:
+    """Build a UI-ready 'current_focus' string from all active exam events.
+
+    Covers all ExamBro exams — JEE, NEET, CUET, GUJCET.
+    Returns None when no exams are in season.
+    """
+    seen: set[str] = set()
+    active: list[tuple[str, ExamPhase]] = []  # (short_name, phase)
+
+    for ev in sorted(
+        [e for e in events if e.exam_date >= today], key=lambda e: e.exam_date
+    ):
+        days = (ev.exam_date - today).days
+        if days <= 7:
+            phase = ExamPhase.exam_week
+        elif days <= 30:
+            phase = ExamPhase.revision
+        elif days <= 60:
+            phase = ExamPhase.preparation
+        elif days <= 90:
+            phase = ExamPhase.registration
+        else:
+            continue
+        name = _short_exam_name(ev.exam_name)
+        if name not in seen:
+            seen.add(name)
+            active.append((name, phase))
+
+    for ev in sorted(
+        [e for e in events if e.exam_date < today],
+        key=lambda e: e.exam_date,
+        reverse=True,
+    ):
+        days_since = (today - ev.exam_date).days
+        if days_since <= 30:
+            phase = ExamPhase.results
+        elif days_since <= 90:
+            phase = ExamPhase.counselling
+        else:
+            break
+        name = _short_exam_name(ev.exam_name)
+        if name not in seen:
+            seen.add(name)
+            active.append((name, phase))
+
+    if not active:
+        return None
+
+    phase_set = {p for _, p in active}
+
+    if len(phase_set) == 1:
+        phase = next(iter(phase_set))
+        names = " • ".join(n for n, _ in active)
+        label = _PHASE_DISPLAY.get(phase)
+        if label and phase in _PROMINENT_PHASES:
+            return f"{names} {label}"
+        return names  # prep / registration: just list the exams
+
+    # Multiple phases → per-exam labels: "NEET Results • JEE Counselling"
+    parts: list[str] = []
+    for name, phase in active:
+        label = _PHASE_DISPLAY.get(phase)
+        parts.append(f"{name} {label}" if label else name)
+    return " • ".join(parts)
+
+
+def get_current_focus(today: date) -> str | None:
+    """DB-only (no LLM). Called by the settings API to display the exam season."""
+    return _build_current_focus(today, _load_from_db(today))
+
+
 def _detect_phase(
     today: date, events: list[ExamEvent]
 ) -> tuple[ExamPhase, ExamEvent | None]:
@@ -177,21 +283,24 @@ async def fetch_adaptive_context(
             return AdaptiveContext(phase=ExamPhase.off_season)
 
         phase, ref = _detect_phase(today, events)
+        current_focus = _build_current_focus(today, events)
 
         if ref is None:
-            return AdaptiveContext(phase=phase)
+            return AdaptiveContext(phase=phase, current_focus=current_focus)
 
         if ref.exam_date >= today:
             return AdaptiveContext(
                 phase=phase,
                 nearest_exam_name=ref.exam_name,
                 days_to_exam=(ref.exam_date - today).days,
+                current_focus=current_focus,
             )
 
         return AdaptiveContext(
             phase=phase,
             nearest_exam_name=ref.exam_name,
             days_since_exam=(today - ref.exam_date).days,
+            current_focus=current_focus,
         )
 
     except Exception as exc:

@@ -191,18 +191,21 @@ export default function Settings() {
   const [newPillar, setNewPillar]       = useState('')
   const [addingPillar, setAddingPillar] = useState(false)
 
-  const [error, setError] = useState('')
-  const [saved, setSaved] = useState(false)
-  const [busy, setBusy]   = useState(false)
+  const [error, setError]         = useState('')
+  const [saved, setSaved]         = useState(false)
+  const [busy, setBusy]           = useState(false)
+  const [currentFocus, setCurrentFocus] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
-      const [s, p] = await Promise.all([
+      const [s, p, focus] = await Promise.all([
         api.get<AppSettings>('/settings'),
         api.get<Pillar[]>('/pillars'),
+        api.get<{ current_focus: string | null }>('/settings/adaptive-focus'),
       ])
       setSettings(s)
       setPillars(p)
+      setCurrentFocus(focus.current_focus)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Failed to load settings')
     }
@@ -490,7 +493,9 @@ export default function Settings() {
         </Row>
         <Row label="Current Focus" dim={!adaptiveOn}>
           {adaptiveOn ? (
-            <span className="text-[13px] font-medium text-text">JEE Mains season</span>
+            <span className="text-[13px] font-medium text-text">
+              {currentFocus ?? 'Auto-detecting…'}
+            </span>
           ) : (
             <span className="text-[12px] text-muted italic">
               Enable Adaptive Strategy above to use automatic focus.

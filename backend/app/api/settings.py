@@ -1,7 +1,10 @@
 """Settings — cadence, Business Foundation, Target Audience, allow-list, handles; pillars CRUD."""
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.agents import exam_calendar_fetcher
 from app.api.deps import require_owner
 from app.db import get_db
 from app.schemas import PillarIn, PillarOut, SettingsIn, SettingsOut
@@ -18,6 +21,21 @@ def get_settings_row() -> SettingsOut:
     if not rows:
         raise HTTPException(500, "Settings row missing — run the seed migration")
     return SettingsOut(**rows[0])
+
+
+@router.get("/adaptive-focus")
+def get_adaptive_focus() -> dict:
+    """Return UI-ready current_focus string from cached exam_calendar data.
+
+    DB-only — no LLM. Returns null when the table is empty or adaptive strategy
+    is disabled. The exam_calendar table is populated lazily on each topic generation
+    run, so the value is as fresh as the last generation.
+    """
+    db = get_db()
+    rows = db.table("settings").select("adaptive_strategy_enabled").limit(1).execute().data
+    if not rows or not rows[0].get("adaptive_strategy_enabled", True):
+        return {"current_focus": None}
+    return {"current_focus": exam_calendar_fetcher.get_current_focus(date.today())}
 
 
 @router.patch("", response_model=SettingsOut)
