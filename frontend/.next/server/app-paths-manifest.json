@@ -1,8 +1,8 @@
 {
-  "/today/page": "app/today/page.js",
   "/queue/page": "app/queue/page.js",
+  "/today/page": "app/today/page.js",
   "/review/[postId]/page": "app/review/[postId]/page.js",
   "/review/page": "app/review/page.js",
-  "/settings/page": "app/settings/page.js",
-  "/insights/page": "app/insights/page.js"
+  "/ideas/page": "app/ideas/page.js",
+  "/settings/page": "app/settings/page.js"
 }

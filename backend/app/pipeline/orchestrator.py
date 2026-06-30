@@ -27,7 +27,7 @@ from app.agents import (
 )
 from app.config import get_settings
 from app.db import get_db
-from app.schemas import Cadence, Draft, PostFormat, PostStatus, TopicStatus
+from app.schemas import Cadence, CompetitorDigest, Draft, PostFormat, PostStatus, TopicStatus
 from app.services import email, instagram
 
 logger = logging.getLogger(__name__)
@@ -105,7 +105,7 @@ def _yesterdays_picked_pillar(today: date) -> str | None:
 
 
 def _recent_topics(today: date, days: int = 30) -> list[dict]:
-    """Title + description for every topic in the last N days (all statuses).
+    """Title + description for approved/published topics in the last N days.
 
     Passed to the topic decider so its duplicate validator can compare both
     the title and the description, not just the title alone.
@@ -113,16 +113,21 @@ def _recent_topics(today: date, days: int = 30) -> list[dict]:
     since = (today - timedelta(days=days)).isoformat()
     rows = (
         get_db()
-        .table("topics")
-        .select("title,description")
-        .gte("round_date", since)
+        .table("posts")
+        .select("status,publish_status,topics!inner(title,description,round_date)")
+        .gte("topics.round_date", since)
+        .or_(
+            f"status.in.({PostStatus.approved.value},{PostStatus.saved.value}),"
+            "publish_status.eq.published"
+        )
         .execute()
         .data
     )
     return [
-        {"title": r["title"], "description": r.get("description")}
+        {"title": t["title"], "description": t.get("description")}
         for r in rows
-        if r.get("title")
+        for t in [r.get("topics") or {}]
+        if t.get("title")
     ]
 
 
@@ -175,19 +180,33 @@ async def run_topic_round(
 
     idea = _pending_idea()
     prior_topics = _recent_topics(today)
+    competitor_handles = settings_row.get("competitor_handles") or []
+    logger.debug("[DEBUG COMPETITOR] competitor_handles=%s", competitor_handles)
     _has_competitors = any(
-        h.strip() for h in (settings_row.get("competitor_handles") or [])
+        h.strip() for h in competitor_handles
     )
     if _has_competitors:
+        logger.debug("[DEBUG COMPETITOR] entering competitor fetch branch")
         news, comp_digest, perf_digest, adaptive_ctx = await asyncio.gather(
             news_search.fetch_exam_news(now),
             competitor_fetcher.fetch_competitor_trends(settings_row, now),
             performance_fetcher.fetch_performance_signal(settings_row, now),
             exam_calendar_fetcher.fetch_adaptive_context(settings_row, now),
         )
+        logger.debug(
+            "[DEBUG COMPETITOR] returned CompetitorDigest=%s",
+            comp_digest.model_dump(mode="json"),
+        )
     else:
         logger.info("No competitors configured, skipping competitor analysis.")
-        comp_digest = None
+        logger.debug("[DEBUG COMPETITOR] entering empty competitor branch")
+        # Preserve the Topic Decider input shape even when competitor tracking is off.
+        # An empty digest renders no prompt block, matching the old no-signal behavior.
+        comp_digest = CompetitorDigest()
+        logger.debug(
+            "[DEBUG COMPETITOR] returned CompetitorDigest=%s",
+            comp_digest.model_dump(mode="json"),
+        )
         news, perf_digest, adaptive_ctx = await asyncio.gather(
             news_search.fetch_exam_news(now),
             performance_fetcher.fetch_performance_signal(settings_row, now),

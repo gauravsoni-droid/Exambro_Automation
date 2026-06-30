@@ -1,8 +1,10 @@
 """Environment configuration. All secrets come from .env (repo root) — never hard-coded."""
 
-from functools import lru_cache
+import logging
 from pathlib import Path
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -34,6 +36,8 @@ class Settings(BaseSettings):
     critic_model: str = "claude-opus-4-8"
     news_provider: Provider = "anthropic"
     news_model: str = "claude-opus-4-8"
+    topic_provider: Provider = "kimi"
+    topic_model: str = "kimi-k2.6"
     image_model: str = "gpt-image-2"
 
     # Content language — constant "hi" for now; a parameter so English can come later
@@ -63,6 +67,12 @@ class Settings(BaseSettings):
             )
 
 
-@lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    s = Settings()
+    logger.info(
+        "[SETTINGS TEST] env_file=%s provider=%s model=%s",
+        _ENV_FILE,
+        s.news_provider,
+        s.news_model,
+    )
+    return s

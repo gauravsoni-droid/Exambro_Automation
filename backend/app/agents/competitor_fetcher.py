@@ -17,7 +17,7 @@ from typing import Any
 
 from app.agents import context, llm
 from app.db import get_db
-from app.schemas import CompetitorDigest
+from app.schemas import CompetitorDigest, CompetitorTheme
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +99,15 @@ async def fetch_competitor_trends(
             + "\n\nReturn the structured JSON summary."
         )
         raw = await llm.claude_web_search(system, user)
-        return CompetitorDigest.model_validate(llm._extract_json(raw))
+        digest = CompetitorDigest.model_validate(llm._extract_json(raw))
+        logger.info(
+            "[COMPETITOR TEST] handles=%s trending_themes=%s content_gaps=%s overused_topics=%s",
+            handles,
+            [t.theme for t in digest.trending_themes],
+            digest.content_gaps,
+            digest.overused_topics,
+        )
+        return digest
     except (json.JSONDecodeError, ValueError) as exc:
         logger.warning("Competitor digest parse failed, skipping: %s", exc)
         return CompetitorDigest()

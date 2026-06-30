@@ -174,6 +174,34 @@ def _validate_no_duplicates(round_: TopicRound, prior_topics: list[dict]) -> Non
                     )
 
 
+def _validate_never_post(round_: TopicRound, settings_row: dict[str, Any]) -> None:
+    """Raise ValueError if any proposed topic matches an owner never-post rule.
+
+    Uses significant-word token overlap: fires when ≥ 50% of a rule's key tokens
+    appear in the topic's title + description. Short rules (1–2 words) require
+    any single keyword match; longer rules require a majority.
+    """
+    never: list[str] = settings_row.get("bf_never_post") or []
+    if not never:
+        return
+    for t in round_.topics:
+        topic_tokens = _sig_tokens(f"{t.title} {t.description or ''}")
+        for rule in never:
+            rule_tokens = _sig_tokens(rule)
+            if not rule_tokens:
+                continue
+            overlap = topic_tokens & rule_tokens
+            if len(overlap) / len(rule_tokens) >= 0.5:
+                logger.info(
+                    "Never-post [hard] '%s' matches rule '%s' overlap=%s",
+                    t.title, rule, sorted(overlap),
+                )
+                raise ValueError(
+                    f"Topic '{t.title}' violates never-post rule '{rule}' "
+                    f"(matched: {', '.join(sorted(overlap))}) — choose a different topic"
+                )
+
+
 def idea_matches(payload: str, topic: TopicSuggestion) -> bool:
     """Return True if the topic semantically represents the owner idea.
 
@@ -234,6 +262,7 @@ def _validate_round(
     all_pillar_ids: set[str],
     idea: dict[str, Any] | None,
     prior_topics: list[dict] | None = None,
+    settings_row: dict[str, Any] | None = None,
 ) -> None:
     slot1 = round_.topics[0]
     pillar_ids = [t.pillar_id for t in round_.topics]
@@ -271,6 +300,10 @@ def _validate_round(
     # 5. No duplicates of recent/historical topics
     if prior_topics:
         _validate_no_duplicates(round_, prior_topics)
+
+    # 6. Never-post hard check — owner-defined topics must never appear
+    if settings_row:
+        _validate_never_post(round_, settings_row)
 
 
 async def decide_topics(
@@ -324,7 +357,7 @@ async def decide_topics(
         for p in prior_topics:
             line = f"- {p['title']}"
             if p.get("description"):
-                line += f": {p['description']}"
+                line += f": {p['description'][:160]}"
             lines.append(line)
         prior_block = (
             "\nRECENT TOPICS (last 30 days — do not repeat or closely rephrase "
@@ -341,6 +374,12 @@ async def decide_topics(
     )
     comp_block = (
         context.competitor_trends_block(competitor_digest) if competitor_digest else ""
+    )
+    logger.debug(
+        "[DEBUG COMPETITOR] competitor_handles=%s digest=%s rendered_block=%r",
+        settings_row.get("competitor_handles") or [],
+        competitor_digest.model_dump(mode="json") if competitor_digest else None,
+        comp_block,
     )
     extra_blocks = (f"\n{liked_block}\n" if liked_block else "") + (
         f"\n{never_topics}\n" if never_topics else ""
@@ -372,25 +411,30 @@ async def decide_topics(
         + f"{idea_block}{rejected_block}"
     )
 
+    logger.info(
+        "[TOPIC DECIDER TEST] provider=%s model=%s",
+        s.topic_provider,
+        s.topic_model,
+    )
     round_ = await llm.complete_json(
-        s.news_provider,
-        s.news_model,
+        s.topic_provider,
+        s.topic_model,
         system,
         "Generate today's 3 topic suggestions.",
         TopicRound,
     )
     try:
-        _validate_round(round_, allowed_ids, all_ids, pending_idea, prior_topics)
+        _validate_round(round_, allowed_ids, all_ids, pending_idea, prior_topics, settings_row)
     except ValueError as exc:
         logger.warning("Topic round invalid (%s) — one retry", exc)
         round_ = await llm.complete_json(
-            s.news_provider,
-            s.news_model,
+            s.topic_provider,
+            s.topic_model,
             system,
             f"Generate today's 3 topic suggestions. Previous attempt was invalid: {exc}",
             TopicRound,
         )
-        _validate_round(round_, allowed_ids, all_ids, pending_idea, prior_topics)
+        _validate_round(round_, allowed_ids, all_ids, pending_idea, prior_topics, settings_row)
     return round_
 
 

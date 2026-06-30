@@ -37,6 +37,8 @@ async def complete(
 ) -> str:
     s = get_settings()
 
+    logger.info("[PROVIDER TEST] provider=%s model=%s", provider, model)
+
     if provider == "anthropic":
         from anthropic import AsyncAnthropic
 
@@ -301,16 +303,30 @@ async def complete_json[T: BaseModel](
 
 
 async def claude_web_search(system: str, user: str, max_tokens: int = 4096) -> str:
-    """Claude with the server-side web search tool (news research — TRD §3)."""
+    """Always uses Anthropic SDK + web_search_20260209 for live web search.
+
+    Model is configurable via NEWS_MODEL in .env (default: claude-opus-4-8).
+    NEWS_PROVIDER is intentionally ignored — live web search is Anthropic-only.
+    """
     from anthropic import AsyncAnthropic
 
     s = get_settings()
+    model = s.news_model
+
+    logger.info("[LIVE NEWS TEST] model=%s", model)
+
     client = AsyncAnthropic(api_key=s.anthropic_api_key)
     resp = await client.messages.create(
-        model="claude-opus-4-8",
+        model=model,
         max_tokens=max_tokens,
         system=system,
         tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 8}],
         messages=[{"role": "user", "content": user}],
+    )
+    block_types = [b.type for b in resp.content]
+    web_search_invoked = any(b.type in ("tool_use", "tool_result") for b in resp.content)
+    logger.info(
+        "[LIVE NEWS TEST] content_blocks=%d block_types=%s web_search_invoked=%s",
+        len(resp.content), block_types, web_search_invoked,
     )
     return "".join(b.text for b in resp.content if b.type == "text")

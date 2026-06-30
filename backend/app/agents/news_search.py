@@ -36,7 +36,27 @@ async def fetch_exam_news(now: datetime) -> NewsDigest:
             "neet.nta.nic.in, gseb.org)."
         )
         raw = await llm.claude_web_search(system, user)
-        return NewsDigest.model_validate(llm._extract_json(raw))
+        logger.info("[LIVE NEWS TEST] raw_json=%.500s", raw)
+        digest = NewsDigest.model_validate(llm._extract_json(raw))
+        if not digest.items:
+            logger.info("[LIVE NEWS TEST] NewsDigest is empty — FAIL")
+        else:
+            urgent_count = sum(1 for i in digest.items if i.is_urgent)
+            urls = [i.url for i in digest.items]
+            logger.info(
+                "[LIVE NEWS TEST] items=%d urgent=%d urls=%s",
+                len(digest.items), urgent_count, urls,
+            )
+            for item in digest.items:
+                logger.info(
+                    "[LIVE NEWS TEST] item headline=%r url=%r is_urgent=%s",
+                    item.headline, item.url, item.is_urgent,
+                )
+            logger.info(
+                "[LIVE NEWS TEST] %s",
+                "PASS — at least one urgent item" if urgent_count > 0 else "FAIL — no urgent items",
+            )
+        return digest
     except (json.JSONDecodeError, ValueError) as exc:
         logger.warning("News digest parse failed, continuing without news: %s", exc)
         return NewsDigest()
